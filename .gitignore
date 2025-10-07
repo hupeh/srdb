@@ -1,0 +1,46 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace
+go.work
+go.work.sum
+
+# Test coverage
+*.coverage
+coverage.*
+
+# IDE
+.vscode/
+.idea/
+.zed/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime data directories
+mydb/
+testdb/
+*_data/
+*.log
+*.wal
+*.sst
+
+# Example binaries
+/examples/webui/data/
+
+# AI markdown
+/*.md
+!/CLAUDE.md
+!/DESIGN.md
+!/README.md
+!/LICENSE.md

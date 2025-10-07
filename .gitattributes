@@ -1,0 +1,11 @@
+# Go files
+*.go text diff=golang eol=lf
+
+# Manifests and configs
+MANIFEST text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# Binary files
+*.sst binary
+*.wal binary
