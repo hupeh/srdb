@@ -1,12 +1,11 @@
-package compaction
+package srdb
 
 import (
-	"code.tczkiot.com/srdb/manifest"
-	"code.tczkiot.com/srdb/sst"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestCompactionBasic(t *testing.T) {
@@ -21,26 +20,26 @@ func TestCompactionBasic(t *testing.T) {
 	}
 
 	// 创建 VersionSet
-	versionSet, err := manifest.NewVersionSet(manifestDir)
+	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer versionSet.Close()
 
 	// 创建 SST Manager
-	sstMgr, err := sst.NewManager(sstDir)
+	sstMgr, err := NewSSTableManager(sstDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sstMgr.Close()
 
 	// 创建测试数据
-	rows1 := make([]*sst.Row, 100)
-	for i := 0; i < 100; i++ {
-		rows1[i] = &sst.Row{
+	rows1 := make([]*SSTableRow, 100)
+	for i := range 100 {
+		rows1[i] = &SSTableRow{
 			Seq:  int64(i),
 			Time: 1000,
-			Data: map[string]interface{}{"value": i},
+			Data: map[string]any{"value": i},
 		}
 	}
 
@@ -51,8 +50,8 @@ func TestCompactionBasic(t *testing.T) {
 	}
 
 	// 添加到 Version
-	edit1 := manifest.NewVersionEdit()
-	edit1.AddFile(&manifest.FileMetadata{
+	edit1 := NewVersionEdit()
+	edit1.AddFile(&FileMetadata{
 		FileNumber: 1,
 		Level:      0,
 		FileSize:   1024,
@@ -75,16 +74,16 @@ func TestCompactionBasic(t *testing.T) {
 	}
 
 	// 创建 Compaction Manager
-	compactionMgr := NewManager(sstDir, versionSet)
+	compactionMgr := NewCompactionManager(sstDir, versionSet, sstMgr)
 
 	// 创建更多文件触发 Compaction
 	for i := 1; i < 5; i++ {
-		rows := make([]*sst.Row, 50)
-		for j := 0; j < 50; j++ {
-			rows[j] = &sst.Row{
+		rows := make([]*SSTableRow, 50)
+		for j := range 50 {
+			rows[j] = &SSTableRow{
 				Seq:  int64(i*100 + j),
 				Time: int64(1000 + i),
-				Data: map[string]interface{}{"value": i*100 + j},
+				Data: map[string]any{"value": i*100 + j},
 			}
 		}
 
@@ -93,8 +92,8 @@ func TestCompactionBasic(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		edit := manifest.NewVersionEdit()
-		edit.AddFile(&manifest.FileMetadata{
+		edit := NewVersionEdit()
+		edit.AddFile(&FileMetadata{
 			FileNumber: int64(i + 1),
 			Level:      0,
 			FileSize:   512,
@@ -152,7 +151,7 @@ func TestPickerLevelScore(t *testing.T) {
 	manifestDir := tmpDir
 
 	// 创建 VersionSet
-	versionSet, err := manifest.NewVersionSet(manifestDir)
+	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,9 +161,9 @@ func TestPickerLevelScore(t *testing.T) {
 	picker := NewPicker()
 
 	// 添加一些文件到 L0
-	edit := manifest.NewVersionEdit()
-	for i := 0; i < 3; i++ {
-		edit.AddFile(&manifest.FileMetadata{
+	edit := NewVersionEdit()
+	for i := range 3 {
+		edit.AddFile(&FileMetadata{
 			FileNumber: int64(i + 1),
 			Level:      0,
 			FileSize:   1024 * 1024, // 1MB
@@ -206,28 +205,28 @@ func TestCompactionMerge(t *testing.T) {
 	}
 
 	// 创建 VersionSet
-	versionSet, err := manifest.NewVersionSet(manifestDir)
+	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer versionSet.Close()
 
 	// 创建 SST Manager
-	sstMgr, err := sst.NewManager(sstDir)
+	sstMgr, err := NewSSTableManager(sstDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sstMgr.Close()
 
 	// 创建两个有重叠 key 的 SST 文件
-	rows1 := []*sst.Row{
-		{Seq: 1, Time: 1000, Data: map[string]interface{}{"value": "old"}},
-		{Seq: 2, Time: 1000, Data: map[string]interface{}{"value": "old"}},
+	rows1 := []*SSTableRow{
+		{Seq: 1, Time: 1000, Data: map[string]any{"value": "old"}},
+		{Seq: 2, Time: 1000, Data: map[string]any{"value": "old"}},
 	}
 
-	rows2 := []*sst.Row{
-		{Seq: 1, Time: 2000, Data: map[string]interface{}{"value": "new"}}, // 更新
-		{Seq: 3, Time: 2000, Data: map[string]interface{}{"value": "new"}},
+	rows2 := []*SSTableRow{
+		{Seq: 1, Time: 2000, Data: map[string]any{"value": "new"}}, // 更新
+		{Seq: 3, Time: 2000, Data: map[string]any{"value": "new"}},
 	}
 
 	reader1, err := sstMgr.CreateSST(1, rows1)
@@ -243,8 +242,8 @@ func TestCompactionMerge(t *testing.T) {
 	defer reader2.Close()
 
 	// 添加到 Version
-	edit := manifest.NewVersionEdit()
-	edit.AddFile(&manifest.FileMetadata{
+	edit := NewVersionEdit()
+	edit.AddFile(&FileMetadata{
 		FileNumber: 1,
 		Level:      0,
 		FileSize:   512,
@@ -252,7 +251,7 @@ func TestCompactionMerge(t *testing.T) {
 		MaxKey:     2,
 		RowCount:   2,
 	})
-	edit.AddFile(&manifest.FileMetadata{
+	edit.AddFile(&FileMetadata{
 		FileNumber: 2,
 		Level:      0,
 		FileSize:   512,
@@ -318,14 +317,14 @@ func BenchmarkCompaction(b *testing.B) {
 	}
 
 	// 创建 VersionSet
-	versionSet, err := manifest.NewVersionSet(manifestDir)
+	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
 		b.Fatal(err)
 	}
 	defer versionSet.Close()
 
 	// 创建 SST Manager
-	sstMgr, err := sst.NewManager(sstDir)
+	sstMgr, err := NewSSTableManager(sstDir)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -335,13 +334,13 @@ func BenchmarkCompaction(b *testing.B) {
 	const numFiles = 5
 	const rowsPerFile = 1000
 
-	for i := 0; i < numFiles; i++ {
-		rows := make([]*sst.Row, rowsPerFile)
-		for j := 0; j < rowsPerFile; j++ {
-			rows[j] = &sst.Row{
+	for i := range numFiles {
+		rows := make([]*SSTableRow, rowsPerFile)
+		for j := range rowsPerFile {
+			rows[j] = &SSTableRow{
 				Seq:  int64(i*rowsPerFile + j),
 				Time: int64(1000 + i),
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"value": fmt.Sprintf("data-%d-%d", i, j),
 				},
 			}
@@ -353,8 +352,8 @@ func BenchmarkCompaction(b *testing.B) {
 		}
 		reader.Close()
 
-		edit := manifest.NewVersionEdit()
-		edit.AddFile(&manifest.FileMetadata{
+		edit := NewVersionEdit()
+		edit.AddFile(&FileMetadata{
 			FileNumber: int64(i + 1),
 			Level:      0,
 			FileSize:   10240,
@@ -381,12 +380,148 @@ func BenchmarkCompaction(b *testing.B) {
 		OutputLevel: 1,
 	}
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := compactor.DoCompaction(task, version)
 		if err != nil {
 			b.Fatal(err)
+		}
+	}
+}
+
+// TestCompactionQueryOrder 测试 compaction 后查询结果的排序
+func TestCompactionQueryOrder(t *testing.T) {
+	// 创建临时目录
+	tmpDir := t.TempDir()
+
+	// 创建 Schema - 包含多个字段以增加数据大小
+	schema := NewSchema("test", []Field{
+		{Name: "id", Type: FieldTypeInt64},
+		{Name: "name", Type: FieldTypeString},
+		{Name: "data", Type: FieldTypeString},
+		{Name: "timestamp", Type: FieldTypeInt64},
+	})
+
+	// 打开 Engine (使用较小的 MemTable 触发频繁 flush)
+	engine, err := OpenEngine(&EngineOptions{
+		Dir:          tmpDir,
+		MemTableSize: 2 * 1024 * 1024, // 2MB MemTable
+		Schema:       schema,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+
+	t.Logf("开始插入 4000 条数据...")
+
+	// 插入 4000 条数据，每条数据大小在 2KB-1MB 之间
+	for i := range 4000 {
+		// 生成 2KB 到 1MB 的随机数据
+		dataSize := 2*1024 + (i % (1024*1024 - 2*1024)) // 2KB ~ 1MB
+		largeData := make([]byte, dataSize)
+		for j := range largeData {
+			largeData[j] = byte('A' + (j % 26))
+		}
+
+		err := engine.Insert(map[string]any{
+			"id":        int64(i),
+			"name":      fmt.Sprintf("user_%d", i),
+			"data":      string(largeData),
+			"timestamp": int64(1000000 + i),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if (i+1)%500 == 0 {
+			t.Logf("已插入 %d 条数据", i+1)
+		}
+	}
+
+	t.Logf("插入完成，等待后台 compaction...")
+
+	// 等待一段时间让后台 compaction 有机会运行
+	// 后台 compaction 每 10 秒检查一次，所以需要等待至少 12 秒
+	time.Sleep(12 * time.Second)
+
+	t.Logf("开始查询所有数据...")
+
+	// 查询所有数据
+	rows, err := engine.Query().Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	// 验证顺序和数据完整性
+	var lastSeq int64 = 0
+	count := 0
+	expectedIDs := make(map[int64]bool) // 用于验证所有 ID 都存在
+
+	for rows.Next() {
+		row := rows.Row()
+		data := row.Data()
+		currentSeq := data["_seq"].(int64)
+
+		// 验证顺序
+		if currentSeq <= lastSeq {
+			t.Errorf("Query results NOT in order: got seq %d after seq %d", currentSeq, lastSeq)
+		}
+
+		// 验证数据完整性
+		id, ok := data["id"].(int64)
+		if !ok {
+			// 尝试其他类型
+			if idFloat, ok2 := data["id"].(float64); ok2 {
+				id = int64(idFloat)
+				expectedIDs[id] = true
+			} else {
+				t.Errorf("Seq %d: missing or invalid id field, actual type: %T, value: %v",
+					currentSeq, data["id"], data["id"])
+			}
+		} else {
+			expectedIDs[id] = true
+		}
+
+		// 验证 name 字段
+		name, ok := data["name"].(string)
+		if !ok || name != fmt.Sprintf("user_%d", id) {
+			t.Errorf("Seq %d: invalid name field, expected 'user_%d', got '%v'", currentSeq, id, name)
+		}
+
+		// 验证 data 字段存在且不为空
+		dataStr, ok := data["data"].(string)
+		if !ok || len(dataStr) < 2*1024 {
+			t.Errorf("Seq %d: invalid data field size", currentSeq)
+		}
+
+		lastSeq = currentSeq
+		count++
+	}
+
+	if count != 4000 {
+		t.Errorf("Expected 4000 rows, got %d", count)
+	}
+
+	// 验证所有 ID 都存在
+	for i := range int64(4000) {
+		if !expectedIDs[i] {
+			t.Errorf("Missing ID: %d", i)
+		}
+	}
+
+	t.Logf("✓ 查询返回 %d 条记录，顺序正确 (seq 1→%d)", count, lastSeq)
+	t.Logf("✓ 所有数据完整性验证通过")
+
+	// 输出 compaction 统计信息
+	stats := engine.GetCompactionManager().GetLevelStats()
+	t.Logf("Compaction 统计:")
+	for _, levelStat := range stats {
+		level := levelStat["level"].(int)
+		fileCount := levelStat["file_count"].(int)
+		totalSize := levelStat["total_size"].(int64)
+		if fileCount > 0 {
+			t.Logf("  L%d: %d 个文件, %.2f MB", level, fileCount, float64(totalSize)/(1024*1024))
 		}
 	}
 }

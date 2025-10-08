@@ -28,7 +28,7 @@ func TestEngine(t *testing.T) {
 
 	// 2. 插入数据
 	for i := 1; i <= 100; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"name": fmt.Sprintf("user_%d", i),
 			"age":  20 + i%50,
 		}
@@ -138,7 +138,7 @@ func TestEngineFlush(t *testing.T) {
 
 	// 插入足够多的数据触发 Flush
 	for i := 1; i <= 200; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"data": fmt.Sprintf("value_%d", i),
 		}
 		engine.Insert(data)
@@ -177,12 +177,11 @@ func BenchmarkEngineInsert(b *testing.B) {
 	})
 	defer engine.Close()
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"value": 123,
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		engine.Insert(data)
 	}
 }
@@ -200,14 +199,13 @@ func BenchmarkEngineGet(b *testing.B) {
 
 	// 预先插入数据
 	for i := 1; i <= 10000; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"value": i,
 		}
 		engine.Insert(data)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		key := int64(i%10000 + 1)
 		engine.Get(key)
 	}
@@ -245,18 +243,18 @@ func TestHighConcurrencyWrite(t *testing.T) {
 	startTime := time.Now()
 
 	// 启动多个并发写入 goroutine
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
 
-			for j := 0; j < rowsPerWorker; j++ {
+			for j := range rowsPerWorker {
 				// 生成随机大小的数据 (2KB - 5MB)
 				dataSize := minDataSize + (j % (maxDataSize - minDataSize))
 				largeData := make([]byte, dataSize)
 				rand.Read(largeData)
 
-				data := map[string]interface{}{
+				data := map[string]any{
 					"worker_id": workerID,
 					"row_index": j,
 					"data_size": dataSize,
@@ -352,7 +350,7 @@ func TestConcurrentReadWrite(t *testing.T) {
 	)
 
 	// 启动写入 goroutines
-	for i := 0; i < numWriters; i++ {
+	for i := range numWriters {
 		wg.Add(1)
 		go func(writerID int) {
 			defer wg.Done()
@@ -365,7 +363,7 @@ func TestConcurrentReadWrite(t *testing.T) {
 					data := make([]byte, dataSize)
 					rand.Read(data)
 
-					payload := map[string]interface{}{
+					payload := map[string]any{
 						"writer_id": writerID,
 						"data":      data,
 						"timestamp": time.Now().UnixNano(),
@@ -383,7 +381,7 @@ func TestConcurrentReadWrite(t *testing.T) {
 	}
 
 	// 启动读取 goroutines
-	for i := 0; i < numReaders; i++ {
+	for i := range numReaders {
 		wg.Add(1)
 		go func(readerID int) {
 			defer wg.Done()
@@ -581,11 +579,11 @@ func TestCrashDuringCompaction(t *testing.T) {
 	const numRows = 500
 	dataSize := 5 * 1024 // 5KB
 
-	for i := 0; i < numRows; i++ {
+	for i := range numRows {
 		data := make([]byte, dataSize)
 		rand.Read(data)
 
-		payload := map[string]interface{}{
+		payload := map[string]any{
 			"index": i,
 			"data":  data,
 		}
@@ -825,8 +823,8 @@ func TestEngineWithCompaction(t *testing.T) {
 	const rowsPerBatch = 100
 
 	for batch := range numBatches {
-		for i := 0; i < rowsPerBatch; i++ {
-			data := map[string]interface{}{
+		for i := range rowsPerBatch {
+			data := map[string]any{
 				"batch": batch,
 				"index": i,
 				"value": fmt.Sprintf("data-%d-%d", batch, i),
@@ -906,8 +904,8 @@ func TestEngineWithCompaction(t *testing.T) {
 	t.Logf("Engine stats: %d rows, %d SST files", stats.TotalRows, stats.SSTCount)
 
 	// 读取一些数据验证
-	for batch := 0; batch < 3; batch++ {
-		for i := 0; i < 10; i++ {
+	for batch := range 3 {
+		for i := range 10 {
 			seq := int64(batch*rowsPerBatch + i + 1)
 			row, err := engine.Get(seq)
 			if err != nil {
@@ -942,9 +940,9 @@ func TestEngineCompactionMerge(t *testing.T) {
 	const rowsPerBatch = 50
 
 	totalRows := 0
-	for batch := 0; batch < numBatches; batch++ {
-		for i := 0; i < rowsPerBatch; i++ {
-			data := map[string]interface{}{
+	for batch := range numBatches {
+		for i := range rowsPerBatch {
+			data := map[string]any{
 				"batch": batch,
 				"index": i,
 				"value": fmt.Sprintf("v%d-%d", batch, i),
@@ -990,8 +988,8 @@ func TestEngineCompactionMerge(t *testing.T) {
 	}
 
 	// 验证数据完整性 - 检查前几条记录
-	for batch := 0; batch < 2; batch++ {
-		for i := 0; i < 5; i++ {
+	for batch := range 2 {
+		for i := range 5 {
 			seq := int64(batch*rowsPerBatch + i + 1)
 			row, err := engine.Get(seq)
 			if err != nil {
@@ -1038,9 +1036,9 @@ func TestEngineBackgroundCompaction(t *testing.T) {
 	const numBatches = 8
 	const rowsPerBatch = 50
 
-	for batch := 0; batch < numBatches; batch++ {
-		for i := 0; i < rowsPerBatch; i++ {
-			data := map[string]interface{}{
+	for batch := range numBatches {
+		for i := range rowsPerBatch {
+			data := map[string]any{
 				"batch": batch,
 				"index": i,
 			}
@@ -1114,10 +1112,8 @@ func BenchmarkEngineWithCompaction(b *testing.B) {
 	}
 	defer engine.Close()
 
-	b.ResetTimer()
-
-	for i := 0; i < b.N; i++ {
-		data := map[string]interface{}{
+	for i := 0; b.Loop(); i++ {
+		data := map[string]any{
 			"index": i,
 			"value": fmt.Sprintf("benchmark-data-%d", i),
 		}
@@ -1168,7 +1164,7 @@ func TestEngineSchemaRecover(t *testing.T) {
 
 	// 插入符合 Schema 的数据
 	for i := 1; i <= 50; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"name":  fmt.Sprintf("user_%d", i),
 			"age":   20 + i%50,
 			"email": fmt.Sprintf("user%d@example.com", i),
@@ -1233,7 +1229,7 @@ func TestEngineSchemaRecoverInvalid(t *testing.T) {
 
 	// 插入一些不符合后续 Schema 的数据
 	for i := 1; i <= 10; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"name": fmt.Sprintf("user_%d", i),
 			"age":  "invalid_age", // 这是字符串，但后续 Schema 要求 int64
 		}
@@ -1307,7 +1303,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 
 	// 插入数据
 	for i := 1; i <= 10; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"name": fmt.Sprintf("user_%d", i),
 			"age":  20 + i,
 		}
@@ -1353,7 +1349,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	}
 
 	// 尝试插入新数据（应该符合恢复的 Schema）
-	err = engine2.Insert(map[string]interface{}{
+	err = engine2.Insert(map[string]any{
 		"name": "new_user",
 		"age":  30,
 	})
@@ -1362,7 +1358,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	}
 
 	// 尝试插入不符合 Schema 的数据（应该失败）
-	err = engine2.Insert(map[string]interface{}{
+	err = engine2.Insert(map[string]any{
 		"name": "bad_user",
 		"age":  "invalid", // 类型错误
 	})

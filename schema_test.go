@@ -155,7 +155,7 @@ func TestPredefinedSchemas(t *testing.T) {
 // TestChecksumDeterminism 测试 checksum 的确定性
 func TestChecksumDeterminism(t *testing.T) {
 	// 创建相同的 Schema 多次
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		s1 := NewSchema("users", []Field{
 			{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 			{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},

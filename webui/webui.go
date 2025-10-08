@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
 	"code.tczkiot.com/srdb"
-	"code.tczkiot.com/srdb/sst"
 )
 
 //go:embed static
@@ -33,16 +34,9 @@ func NewWebUI(db *srdb.Database) *WebUI {
 func (ui *WebUI) setupHandler() http.Handler {
 	mux := http.NewServeMux()
 
-	// API endpoints - JSON
+	// API endpoints - 纯 JSON API
 	mux.HandleFunc("/api/tables", ui.handleListTables)
 	mux.HandleFunc("/api/tables/", ui.handleTableAPI)
-
-	// API endpoints - HTML (for htmx)
-	mux.HandleFunc("/api/tables-html", ui.handleTablesHTML)
-	mux.HandleFunc("/api/tables-view/", ui.handleTableViewHTML)
-
-	// Debug endpoint - list embedded files
-	mux.HandleFunc("/debug/files", ui.handleDebugFiles)
 
 	// 静态文件服务
 	staticFiles, _ := fs.Sub(staticFS, "static")
@@ -104,6 +98,11 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 			Fields:    fields,
 		})
 	}
+
+	// 按表名排序
+	sort.Slice(tables, func(i, j int) bool {
+		return tables[i].Name < tables[j].Name
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tables)
@@ -221,11 +220,8 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 	picker := compactionMgr.GetPicker()
 
 	levels := make([]LevelInfo, 0)
-	for level := 0; level < 7; level++ {
+	for level := range 7 {
 		files := version.GetLevel(level)
-		if len(files) == 0 {
-			continue
-		}
 
 		totalSize := int64(0)
 		fileInfos := make([]FileInfo, 0, len(files))
@@ -241,7 +237,10 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 			})
 		}
 
-		score := picker.GetLevelScore(version, level)
+		score := 0.0
+		if len(files) > 0 {
+			score = picker.GetLevelScore(version, level)
+		}
 
 		levels = append(levels, LevelInfo{
 			Level:     level,
@@ -294,12 +293,10 @@ func (ui *WebUI) handleTableDataBySeq(w http.ResponseWriter, r *http.Request, ta
 	}
 
 	// 构造响应（不进行剪裁，返回完整数据）
-	rowData := make(map[string]interface{})
+	rowData := make(map[string]any)
 	rowData["_seq"] = row.Seq
 	rowData["_time"] = row.Time
-	for k, v := range row.Data {
-		rowData[k] = v
-	}
+	maps.Copy(rowData, row.Data)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(rowData)
@@ -342,26 +339,52 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 	var selectedFields []string
 	if selectParam != "" {
 		selectedFields = strings.Split(selectParam, ",")
+		// 清理字段名（去除空格）
+		for i := range selectedFields {
+			selectedFields[i] = strings.TrimSpace(selectedFields[i])
+		}
 	}
 
 	// 获取 schema 用于字段类型判断
 	tableSchema := table.GetSchema()
 
-	// 使用 Query API 获取所有数据（高效）
-	queryRows, err := table.Query().Rows()
+	// 使用 Query API 获取数据，如果指定了字段则只查询指定字段（按字段压缩优化）
+	queryBuilder := table.Query()
+	if len(selectedFields) > 0 {
+		// 确保 _seq 和 _time 总是被查询（用于构造响应）
+		fieldsWithMeta := make([]string, 0, len(selectedFields)+2)
+		hasSeq := false
+		hasTime := false
+		for _, field := range selectedFields {
+			switch field {
+			case "_seq":
+				hasSeq = true
+			case "_time":
+				hasTime = true
+			}
+		}
+		if !hasSeq {
+			fieldsWithMeta = append(fieldsWithMeta, "_seq")
+		}
+		if !hasTime {
+			fieldsWithMeta = append(fieldsWithMeta, "_time")
+		}
+		fieldsWithMeta = append(fieldsWithMeta, selectedFields...)
+
+		queryBuilder = queryBuilder.Select(fieldsWithMeta...)
+	}
+	queryRows, err := queryBuilder.Rows()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to query table: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer queryRows.Close()
 
-	// 收集所有 rows 到内存中用于分页（对于大数据集，后续可以优化为流式处理）
-	allRows := make([]*sst.Row, 0)
+	// 收集所有 rows 到内存中用于分页
+	allRows := make([]*srdb.SSTableRow, 0)
 	for queryRows.Next() {
 		row := queryRows.Row()
-		// Row 是 query.Row 类型，需要获取其内部的 sst.Row
-		// 直接构造 sst.Row
-		sstRow := &sst.Row{
+		sstRow := &srdb.SSTableRow{
 			Seq:  row.Data()["_seq"].(int64),
 			Time: row.Data()["_time"].(int64),
 			Data: make(map[string]any),
@@ -378,73 +401,43 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 	// 计算分页
 	totalRows := int64(len(allRows))
 	offset := (page - 1) * pageSize
-	end := offset + pageSize
-	if end > int(totalRows) {
-		end = int(totalRows)
-	}
+	end := min(offset+pageSize, int(totalRows))
 
 	// 获取当前页数据
-	rows := make([]*sst.Row, 0, pageSize)
+	rows := make([]*srdb.SSTableRow, 0, pageSize)
 	if offset < int(totalRows) {
 		rows = allRows[offset:end]
 	}
 
 	// 构造响应，对 string 字段进行剪裁
-	const maxStringLength = 100 // 最大字符串长度（按字符计数，非字节）
+	const maxStringLength = 100 // 最大字符串长度
 	data := make([]map[string]any, 0, len(rows))
 	for _, row := range rows {
 		rowData := make(map[string]any)
+		rowData["_seq"] = row.Seq
+		rowData["_time"] = row.Time
 
-		// 如果指定了字段，只返回选定的字段
-		if len(selectedFields) > 0 {
-			for _, field := range selectedFields {
-				field = strings.TrimSpace(field)
-				if field == "_seq" {
-					rowData["_seq"] = row.Seq
-				} else if field == "_time" {
-					rowData["_time"] = row.Time
-				} else if v, ok := row.Data[field]; ok {
-					// 检查字段类型
-					fieldDef, err := tableSchema.GetField(field)
-					if err == nil && fieldDef.Type == srdb.FieldTypeString {
-						// 对字符串字段进行剪裁
-						if str, ok := v.(string); ok {
-							runes := []rune(str)
-							if len(runes) > maxStringLength {
-								rowData[field] = string(runes[:maxStringLength]) + "..."
-								rowData[field+"_truncated"] = true
-								continue
-							}
-						}
-					}
-					rowData[field] = v
-				}
-			}
-		} else {
-			// 返回所有字段
-			rowData["_seq"] = row.Seq
-			rowData["_time"] = row.Time
-			for k, v := range row.Data {
-				// 检查字段类型
-				field, err := tableSchema.GetField(k)
-				if err == nil && field.Type == srdb.FieldTypeString {
-					// 对字符串字段进行剪裁（按 rune 截取，避免 CJK 等多字节字符乱码）
-					if str, ok := v.(string); ok {
-						runes := []rune(str)
-						if len(runes) > maxStringLength {
-							rowData[k] = string(runes[:maxStringLength]) + "..."
-							rowData[k+"_truncated"] = true
-							continue
-						}
+		// 遍历所有字段
+		for k, v := range row.Data {
+			// 检查字段类型
+			field, err := tableSchema.GetField(k)
+			if err == nil && field.Type == srdb.FieldTypeString {
+				// 对字符串字段进行剪裁
+				if str, ok := v.(string); ok {
+					runes := []rune(str)
+					if len(runes) > maxStringLength {
+						rowData[k] = string(runes[:maxStringLength]) + "..."
+						rowData[k+"_truncated"] = true
+						continue
 					}
 				}
-				rowData[k] = v
 			}
+			rowData[k] = v
 		}
 		data = append(data, rowData)
 	}
 
-	response := map[string]interface{}{
+	response := map[string]any{
 		"data":       data,
 		"page":       page,
 		"pageSize":   pageSize,
@@ -454,25 +447,6 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}
-
-// handleDebugFiles 列出所有嵌入的文件（调试用）
-func (ui *WebUI) handleDebugFiles(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintln(w, "Embedded files in staticFS:")
-	fs.WalkDir(staticFS, ".", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			fmt.Fprintf(w, "ERROR walking %s: %v\n", path, err)
-			return err
-		}
-		if d.IsDir() {
-			fmt.Fprintf(w, "[DIR]  %s/\n", path)
-		} else {
-			info, _ := d.Info()
-			fmt.Fprintf(w, "[FILE] %s (%d bytes)\n", path, info.Size())
-		}
-		return nil
-	})
 }
 
 // handleIndex 处理首页请求
@@ -492,239 +466,4 @@ func (ui *WebUI) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Write(content)
-}
-
-// handleTablesHTML 处理获取表列表 HTML 请求（for htmx）
-func (ui *WebUI) handleTablesHTML(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	allTables := ui.db.GetAllTablesInfo()
-	tables := make([]TableListItem, 0, len(allTables))
-	for name, table := range allTables {
-		schema := table.GetSchema()
-		fields := make([]FieldInfo, 0, len(schema.Fields))
-		for _, field := range schema.Fields {
-			fields = append(fields, FieldInfo{
-				Name:    field.Name,
-				Type:    field.Type.String(),
-				Indexed: field.Indexed,
-				Comment: field.Comment,
-			})
-		}
-
-		tables = append(tables, TableListItem{
-			Name:      name,
-			CreatedAt: table.GetCreatedAt(),
-			Fields:    fields,
-		})
-	}
-
-	html := renderTablesHTML(tables)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html))
-}
-
-// handleTableViewHTML 处理获取表视图 HTML 请求（for htmx）
-func (ui *WebUI) handleTableViewHTML(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// 解析路径: /api/tables-view/{name} 或 /api/tables-view/{name}/manifest
-	path := strings.TrimPrefix(r.URL.Path, "/api/tables-view/")
-	parts := strings.Split(path, "/")
-
-	if len(parts) < 1 || parts[0] == "" {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
-
-	tableName := parts[0]
-	isManifest := len(parts) >= 2 && parts[1] == "manifest"
-
-	table, err := ui.db.GetTable(tableName)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
-		return
-	}
-
-	if isManifest {
-		// 返回 Manifest 视图 HTML
-		ui.renderManifestHTML(w, r, tableName, table)
-	} else {
-		// 返回 Data 视图 HTML
-		ui.renderDataHTML(w, r, tableName, table)
-	}
-}
-
-// renderDataHTML 渲染数据视图 HTML
-func (ui *WebUI) renderDataHTML(w http.ResponseWriter, r *http.Request, tableName string, table *srdb.Table) {
-	// 解析分页参数
-	pageStr := r.URL.Query().Get("page")
-	pageSizeStr := r.URL.Query().Get("pageSize")
-
-	page := 1
-	pageSize := 20
-
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
-		}
-	}
-
-	if pageSizeStr != "" {
-		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 1000 {
-			pageSize = ps
-		}
-	}
-
-	// 获取 schema
-	tableSchema := table.GetSchema()
-	schemaInfo := SchemaInfo{
-		Name:   tableSchema.Name,
-		Fields: make([]FieldInfo, 0, len(tableSchema.Fields)),
-	}
-	for _, field := range tableSchema.Fields {
-		schemaInfo.Fields = append(schemaInfo.Fields, FieldInfo{
-			Name:    field.Name,
-			Type:    field.Type.String(),
-			Indexed: field.Indexed,
-			Comment: field.Comment,
-		})
-	}
-
-	// 使用 Query API 获取所有数据
-	queryRows, err := table.Query().Rows()
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to query table: %v", err), http.StatusInternalServerError)
-		return
-	}
-	defer queryRows.Close()
-
-	// 收集所有 rows
-	allRows := make([]*sst.Row, 0)
-	for queryRows.Next() {
-		row := queryRows.Row()
-		sstRow := &sst.Row{
-			Seq:  row.Data()["_seq"].(int64),
-			Time: row.Data()["_time"].(int64),
-			Data: make(map[string]any),
-		}
-		for k, v := range row.Data() {
-			if k != "_seq" && k != "_time" {
-				sstRow.Data[k] = v
-			}
-		}
-		allRows = append(allRows, sstRow)
-	}
-
-	// 计算分页
-	totalRows := int64(len(allRows))
-	offset := (page - 1) * pageSize
-	end := offset + pageSize
-	if end > int(totalRows) {
-		end = int(totalRows)
-	}
-
-	// 获取当前页数据
-	rows := make([]*sst.Row, 0, pageSize)
-	if offset < int(totalRows) {
-		rows = allRows[offset:end]
-	}
-
-	// 构造 TableDataResponse
-	const maxStringLength = 100
-	data := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		rowData := make(map[string]any)
-		rowData["_seq"] = row.Seq
-		rowData["_time"] = row.Time
-		for k, v := range row.Data {
-			field, err := tableSchema.GetField(k)
-			if err == nil && field.Type == srdb.FieldTypeString {
-				if str, ok := v.(string); ok {
-					runes := []rune(str)
-					if len(runes) > maxStringLength {
-						rowData[k] = string(runes[:maxStringLength]) + "..."
-						rowData[k+"_truncated"] = true
-						continue
-					}
-				}
-			}
-			rowData[k] = v
-		}
-		data = append(data, rowData)
-	}
-
-	tableData := TableDataResponse{
-		Data:       data,
-		Page:       int64(page),
-		PageSize:   int64(pageSize),
-		TotalRows:  totalRows,
-		TotalPages: (totalRows + int64(pageSize) - 1) / int64(pageSize),
-	}
-
-	html := renderDataViewHTML(tableName, schemaInfo, tableData)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html))
-}
-
-// renderManifestHTML 渲染 Manifest 视图 HTML
-func (ui *WebUI) renderManifestHTML(w http.ResponseWriter, r *http.Request, tableName string, table *srdb.Table) {
-	engine := table.GetEngine()
-	versionSet := engine.GetVersionSet()
-	version := versionSet.GetCurrent()
-
-	// 获取 Compaction Manager 和 Picker
-	compactionMgr := engine.GetCompactionManager()
-	picker := compactionMgr.GetPicker()
-
-	levels := make([]LevelInfo, 0)
-	for level := 0; level < 7; level++ {
-		files := version.GetLevel(level)
-
-		totalSize := int64(0)
-		fileInfos := make([]FileInfo, 0, len(files))
-		for _, f := range files {
-			totalSize += f.FileSize
-			fileInfos = append(fileInfos, FileInfo{
-				FileNumber: f.FileNumber,
-				Level:      f.Level,
-				FileSize:   f.FileSize,
-				MinKey:     f.MinKey,
-				MaxKey:     f.MaxKey,
-				RowCount:   f.RowCount,
-			})
-		}
-
-		score := 0.0
-		if len(files) > 0 {
-			score = picker.GetLevelScore(version, level)
-		}
-
-		levels = append(levels, LevelInfo{
-			Level:     level,
-			FileCount: len(files),
-			TotalSize: totalSize,
-			Score:     score,
-			Files:     fileInfos,
-		})
-	}
-
-	stats := compactionMgr.GetStats()
-
-	manifest := ManifestResponse{
-		Levels:          levels,
-		NextFileNumber:  versionSet.GetNextFileNumber(),
-		LastSequence:    versionSet.GetLastSequence(),
-		CompactionStats: stats,
-	}
-
-	html := renderManifestViewHTML(tableName, manifest)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(html))
 }

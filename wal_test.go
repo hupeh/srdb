@@ -1,4 +1,4 @@
-package wal
+package srdb
 
 import (
 	"os"
@@ -7,7 +7,7 @@ import (
 
 func TestWAL(t *testing.T) {
 	// 1. 创建 WAL
-	wal, err := Open("test.wal")
+	wal, err := OpenWAL("test.wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -15,8 +15,8 @@ func TestWAL(t *testing.T) {
 
 	// 2. 写入数据
 	for i := int64(1); i <= 100; i++ {
-		entry := &Entry{
-			Type: EntryTypePut,
+		entry := &WALEntry{
+			Type: WALEntryTypePut,
 			Seq:  i,
 			Data: []byte("value_" + string(rune(i))),
 		}
@@ -37,7 +37,7 @@ func TestWAL(t *testing.T) {
 	t.Log("Written 100 entries")
 
 	// 4. 读取数据
-	reader, err := NewReader("test.wal")
+	reader, err := NewWALReader("test.wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func TestWAL(t *testing.T) {
 		if entry.Seq != expectedSeq {
 			t.Errorf("Entry %d: expected Seq=%d, got %d", i, expectedSeq, entry.Seq)
 		}
-		if entry.Type != EntryTypePut {
-			t.Errorf("Entry %d: expected Type=%d, got %d", i, EntryTypePut, entry.Type)
+		if entry.Type != WALEntryTypePut {
+			t.Errorf("Entry %d: expected Type=%d, got %d", i, WALEntryTypePut, entry.Type)
 		}
 	}
 
@@ -68,7 +68,7 @@ func TestWAL(t *testing.T) {
 
 func TestWALTruncate(t *testing.T) {
 	// 创建 WAL
-	wal, err := Open("test_truncate.wal")
+	wal, err := OpenWAL("test_truncate.wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,8 +76,8 @@ func TestWALTruncate(t *testing.T) {
 
 	// 写入数据
 	for i := int64(1); i <= 10; i++ {
-		entry := &Entry{
-			Type: EntryTypePut,
+		entry := &WALEntry{
+			Type: WALEntryTypePut,
 			Seq:  i,
 			Data: []byte("value"),
 		}
@@ -93,7 +93,7 @@ func TestWALTruncate(t *testing.T) {
 	wal.Close()
 
 	// 验证文件为空
-	reader, err := NewReader("test_truncate.wal")
+	reader, err := NewWALReader("test_truncate.wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,18 +112,17 @@ func TestWALTruncate(t *testing.T) {
 }
 
 func BenchmarkWALAppend(b *testing.B) {
-	wal, _ := Open("bench.wal")
+	wal, _ := OpenWAL("bench.wal")
 	defer os.Remove("bench.wal")
 	defer wal.Close()
 
-	entry := &Entry{
-		Type: EntryTypePut,
+	entry := &WALEntry{
+		Type: WALEntryTypePut,
 		Seq:  1,
 		Data: make([]byte, 100),
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for i := 0; b.Loop(); i++ {
 		entry.Seq = int64(i)
 		wal.Append(entry)
 	}

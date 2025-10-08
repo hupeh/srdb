@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"code.tczkiot.com/srdb/sst"
 )
 
 // Table 表
@@ -95,7 +93,7 @@ func (t *Table) Insert(data map[string]any) error {
 }
 
 // Get 查询数据
-func (t *Table) Get(seq int64) (*sst.Row, error) {
+func (t *Table) Get(seq int64) (*SSTableRow, error) {
 	return t.engine.Get(seq)
 }
 
@@ -120,7 +118,7 @@ func (t *Table) ListIndexes() []string {
 }
 
 // Stats 获取统计信息
-func (t *Table) Stats() *Stats {
+func (t *Table) Stats() *TableStats {
 	return t.engine.Stats()
 }
 

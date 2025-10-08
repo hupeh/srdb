@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose test-coverage test-race test-bench test-engine test-compaction test-query fmt fmt-check vet tidy verify clean
+.PHONY: help test test-verbose test-coverage test-race test-bench test-engine test-compaction test-btree test-memtable test-sstable test-wal test-version test-schema test-index test-database fmt fmt-check vet tidy verify clean build run-webui install-webui
 
 # 默认目标
 .DEFAULT_GOAL := help
@@ -40,17 +40,45 @@ test-bench: ## 运行基准测试
 	@echo "$(GREEN)运行基准测试...$(RESET)"
 	@go test -bench=. -benchmem $$(go list ./... | grep -v /examples/)
 
-test-engine: ## 只运行 engine 包的测试
+test-engine: ## 只运行 engine 测试
 	@echo "$(GREEN)运行 engine 测试...$(RESET)"
-	@go test -v ./engine
+	@go test -v -run TestEngine
 
-test-compaction: ## 只运行 compaction 包的测试
+test-compaction: ## 只运行 compaction 测试
 	@echo "$(GREEN)运行 compaction 测试...$(RESET)"
-	@go test -v ./compaction
+	@go test -v -run TestCompaction
 
-test-query: ## 只运行 query 包的测试
-	@echo "$(GREEN)运行 query 测试...$(RESET)"
-	@go test -v ./query
+test-btree: ## 只运行 btree 测试
+	@echo "$(GREEN)运行 btree 测试...$(RESET)"
+	@go test -v -run TestBTree
+
+test-memtable: ## 只运行 memtable 测试
+	@echo "$(GREEN)运行 memtable 测试...$(RESET)"
+	@go test -v -run TestMemTable
+
+test-sstable: ## 只运行 sstable 测试
+	@echo "$(GREEN)运行 sstable 测试...$(RESET)"
+	@go test -v -run TestSST
+
+test-wal: ## 只运行 wal 测试
+	@echo "$(GREEN)运行 wal 测试...$(RESET)"
+	@go test -v -run TestWAL
+
+test-version: ## 只运行 version 测试
+	@echo "$(GREEN)运行 version 测试...$(RESET)"
+	@go test -v -run TestVersion
+
+test-schema: ## 只运行 schema 测试
+	@echo "$(GREEN)运行 schema 测试...$(RESET)"
+	@go test -v -run TestSchema
+
+test-index: ## 只运行 index 测试
+	@echo "$(GREEN)运行 index 测试...$(RESET)"
+	@go test -v -run TestIndex
+
+test-database: ## 只运行 database 测试
+	@echo "$(GREEN)运行 database 测试...$(RESET)"
+	@go test -v -run TestDatabase
 
 fmt: ## 格式化代码
 	@echo "$(GREEN)格式化代码...$(RESET)"
@@ -77,9 +105,25 @@ verify: ## 验证依赖
 	@go mod verify
 	@echo "$(GREEN)✓ 依赖验证完成$(RESET)"
 
-clean: ## 清理测试文件
+build: ## 构建 webui 示例程序
+	@echo "$(GREEN)构建 webui 示例...$(RESET)"
+	@cd examples/webui && go build -o srdb-webui main.go
+	@echo "$(GREEN)✓ 构建完成: examples/webui/srdb-webui$(RESET)"
+
+install-webui: ## 安装 webui 工具到 $GOPATH/bin
+	@echo "$(GREEN)安装 webui 工具...$(RESET)"
+	@cd examples/webui && go install
+	@echo "$(GREEN)✓ 已安装到 $(shell go env GOPATH)/bin/webui$(RESET)"
+
+run-webui: ## 运行 webui 示例（默认端口 8080）
+	@echo "$(GREEN)启动 webui 服务...$(RESET)"
+	@cd examples/webui && go run main.go webui -db ./data -addr :8080
+
+clean: ## 清理测试文件和构建产物
 	@echo "$(GREEN)清理测试文件...$(RESET)"
 	@rm -f coverage.out coverage.html
+	@rm -f examples/webui/srdb-webui
 	@find . -type d -name "mydb*" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type d -name "testdb*" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name "data" -exec rm -rf {} + 2>/dev/null || true
 	@echo "$(GREEN)✓ 清理完成$(RESET)"

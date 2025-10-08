@@ -1,4 +1,4 @@
-package btree
+package srdb
 
 import (
 	"os"
@@ -16,7 +16,7 @@ func TestBTree(t *testing.T) {
 	defer os.Remove("test.sst")
 
 	// 2. 构建 B+Tree
-	builder := NewBuilder(file, 256) // 从 offset 256 开始
+	builder := NewBTreeBuilder(file, 256) // 从 offset 256 开始
 
 	// 添加 1000 个 key-value
 	for i := int64(1); i <= 1000; i++ {
@@ -53,7 +53,7 @@ func TestBTree(t *testing.T) {
 	defer mmapData.Unmap()
 
 	// 5. 查询测试
-	reader := NewReader(mmapData, rootOffset)
+	reader := NewBTreeReader(mmapData, rootOffset)
 
 	// 测试存在的 key
 	for i := int64(1); i <= 1000; i++ {
@@ -93,18 +93,18 @@ func TestBTreeSerialization(t *testing.T) {
 
 	// 序列化
 	data := leaf.Marshal()
-	if len(data) != NodeSize {
-		t.Errorf("Expected size %d, got %d", NodeSize, len(data))
+	if len(data) != BTreeNodeSize {
+		t.Errorf("Expected size %d, got %d", BTreeNodeSize, len(data))
 	}
 
 	// 反序列化
-	leaf2 := Unmarshal(data)
+	leaf2 := UnmarshalBTree(data)
 	if leaf2 == nil {
 		t.Fatal("Unmarshal failed")
 	}
 
 	// 验证
-	if leaf2.NodeType != NodeTypeLeaf {
+	if leaf2.NodeType != BTreeNodeTypeLeaf {
 		t.Error("Wrong node type")
 	}
 	if leaf2.KeyCount != 3 {
@@ -131,7 +131,7 @@ func BenchmarkBTreeGet(b *testing.B) {
 	file, _ := os.Create("bench.sst")
 	defer os.Remove("bench.sst")
 
-	builder := NewBuilder(file, 256)
+	builder := NewBTreeBuilder(file, 256)
 	for i := int64(1); i <= 100000; i++ {
 		builder.Add(i, i*100, 100)
 	}
@@ -144,11 +144,11 @@ func BenchmarkBTreeGet(b *testing.B) {
 	mmapData, _ := mmap.Map(file, mmap.RDONLY, 0)
 	defer mmapData.Unmap()
 
-	reader := NewReader(mmapData, rootOffset)
+	reader := NewBTreeReader(mmapData, rootOffset)
 
 	// 性能测试
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for i := 0; b.Loop(); i++ {
 		key := int64(i%100000 + 1)
 		reader.Get(key)
 	}

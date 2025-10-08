@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
-
-	"code.tczkiot.com/srdb/btree"
 )
 
 // IndexMetadata 索引元数据
@@ -28,8 +26,8 @@ type SecondaryIndex struct {
 	field      string             // 字段名
 	fieldType  FieldType          // 字段类型
 	file       *os.File           // 索引文件
-	builder    *btree.Builder     // B+Tree 构建器
-	reader     *btree.Reader      // B+Tree 读取器
+	builder    *BTreeBuilder      // B+Tree 构建器
+	reader     *BTreeReader       // B+Tree 读取器
 	valueToSeq map[string][]int64 // 值 → seq 列表 (构建时使用)
 	metadata   IndexMetadata      // 元数据
 	mu         sync.RWMutex
@@ -55,7 +53,7 @@ func NewSecondaryIndex(dir, field string, fieldType FieldType) (*SecondaryIndex,
 }
 
 // Add 添加索引条目
-func (idx *SecondaryIndex) Add(value interface{}, seq int64) error {
+func (idx *SecondaryIndex) Add(value any, seq int64) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
@@ -199,7 +197,7 @@ func (idx *SecondaryIndex) load() error {
 }
 
 // Get 查询索引
-func (idx *SecondaryIndex) Get(value interface{}) ([]int64, error) {
+func (idx *SecondaryIndex) Get(value any) ([]int64, error) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 
@@ -238,7 +236,7 @@ func (idx *SecondaryIndex) NeedsUpdate(currentMaxSeq int64) bool {
 }
 
 // IncrementalUpdate 增量更新索引
-func (idx *SecondaryIndex) IncrementalUpdate(getData func(int64) (map[string]interface{}, error), fromSeq, toSeq int64) error {
+func (idx *SecondaryIndex) IncrementalUpdate(getData func(int64) (map[string]any, error), fromSeq, toSeq int64) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
@@ -286,7 +284,7 @@ func encodeSeqList(seqs []int64) []byte {
 func decodeSeqList(data []byte) []int64 {
 	count := len(data) / 8
 	seqs := make([]int64, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		seqs[i] = int64(binary.LittleEndian.Uint64(data[i*8:]))
 	}
 	return seqs
@@ -433,7 +431,7 @@ func (m *IndexManager) GetIndex(field string) (*SecondaryIndex, bool) {
 }
 
 // AddToIndexes 添加到所有索引
-func (m *IndexManager) AddToIndexes(data map[string]interface{}, seq int64) error {
+func (m *IndexManager) AddToIndexes(data map[string]any, seq int64) error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -477,7 +475,7 @@ func (m *IndexManager) ListIndexes() []string {
 }
 
 // VerifyAndRepair 验证并修复所有索引
-func (m *IndexManager) VerifyAndRepair(currentMaxSeq int64, getData func(int64) (map[string]interface{}, error)) error {
+func (m *IndexManager) VerifyAndRepair(currentMaxSeq int64, getData func(int64) (map[string]any, error)) error {
 	m.mu.RLock()
 	indexes := make(map[string]*SecondaryIndex)
 	for k, v := range m.indexes {

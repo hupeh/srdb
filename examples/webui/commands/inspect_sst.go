@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"code.tczkiot.com/srdb/sst"
+	"code.tczkiot.com/srdb"
 )
 
 // InspectSST 检查特定 SST 文件
@@ -19,7 +19,7 @@ func InspectSST(sstPath string) {
 	fmt.Printf("Size: %d bytes\n", info.Size())
 
 	// Open reader
-	reader, err := sst.NewReader(sstPath)
+	reader, err := srdb.NewSSTableReader(sstPath)
 	if err != nil {
 		log.Fatal(err)
 	}

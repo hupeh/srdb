@@ -3,6 +3,7 @@ package srdb
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sync"
@@ -250,8 +251,6 @@ func (db *Database) GetAllTablesInfo() map[string]*Table {
 
 	// 返回副本以避免并发问题
 	result := make(map[string]*Table, len(db.tables))
-	for k, v := range db.tables {
-		result[k] = v
-	}
+	maps.Copy(result, db.tables)
 	return result
 }

@@ -1,11 +1,125 @@
-package memtable
+package srdb
 
 import (
 	"testing"
 )
 
-func TestManagerBasic(t *testing.T) {
-	mgr := NewManager(1024) // 1KB
+func TestMemTable(t *testing.T) {
+	mt := NewMemTable()
+
+	// 1. 插入数据
+	for i := int64(1); i <= 100; i++ {
+		mt.Put(i, []byte("value_"+string(rune(i))))
+	}
+
+	if mt.Count() != 100 {
+		t.Errorf("Expected 100 entries, got %d", mt.Count())
+	}
+
+	t.Logf("Inserted 100 entries, size: %d bytes", mt.Size())
+
+	// 2. 查询数据
+	for i := int64(1); i <= 100; i++ {
+		value, exists := mt.Get(i)
+		if !exists {
+			t.Errorf("Key %d not found", i)
+		}
+		if value == nil {
+			t.Errorf("Key %d: value is nil", i)
+		}
+	}
+
+	// 3. 查询不存在的 key
+	_, exists := mt.Get(101)
+	if exists {
+		t.Error("Key 101 should not exist")
+	}
+
+	t.Log("All tests passed!")
+}
+
+func TestMemTableIterator(t *testing.T) {
+	mt := NewMemTable()
+
+	// 插入数据 (乱序)
+	keys := []int64{5, 2, 8, 1, 9, 3, 7, 4, 6, 10}
+	for _, key := range keys {
+		mt.Put(key, []byte("value"))
+	}
+
+	// 迭代器应该按顺序返回
+	iter := mt.NewIterator()
+	var result []int64
+	for iter.Next() {
+		result = append(result, iter.Key())
+	}
+
+	// 验证顺序
+	for i := 0; i < len(result)-1; i++ {
+		if result[i] >= result[i+1] {
+			t.Errorf("Keys not in order: %v", result)
+			break
+		}
+	}
+
+	if len(result) != 10 {
+		t.Errorf("Expected 10 keys, got %d", len(result))
+	}
+
+	t.Logf("Iterator returned keys in order: %v", result)
+}
+
+func TestMemTableClear(t *testing.T) {
+	mt := NewMemTable()
+
+	// 插入数据
+	for i := int64(1); i <= 10; i++ {
+		mt.Put(i, []byte("value"))
+	}
+
+	if mt.Count() != 10 {
+		t.Errorf("Expected 10 entries, got %d", mt.Count())
+	}
+
+	// 清空
+	mt.Clear()
+
+	if mt.Count() != 0 {
+		t.Errorf("Expected 0 entries after clear, got %d", mt.Count())
+	}
+
+	if mt.Size() != 0 {
+		t.Errorf("Expected size 0 after clear, got %d", mt.Size())
+	}
+
+	t.Log("Clear test passed!")
+}
+
+func BenchmarkMemTablePut(b *testing.B) {
+	mt := NewMemTable()
+	value := make([]byte, 100)
+
+	for i := 0; b.Loop(); i++ {
+		mt.Put(int64(i), value)
+	}
+}
+
+func BenchmarkMemTableGet(b *testing.B) {
+	mt := NewMemTable()
+	value := make([]byte, 100)
+
+	// 预先插入数据
+	for i := range int64(10000) {
+		mt.Put(i, value)
+	}
+
+	for i := 0; b.Loop(); i++ {
+		mt.Get(int64(i % 10000))
+	}
+}
+
+func TestMemTableManagerBasic(t *testing.T) {
+	mgr := NewMemTableManager(1024) // 1KB
 
 	// 测试写入
 	mgr.Put(1, []byte("value1"))
@@ -26,8 +140,8 @@ func TestManagerBasic(t *testing.T) {
 	t.Log("Manager basic test passed!")
 }
 
-func TestManagerSwitch(t *testing.T) {
-	mgr := NewManager(50) // 50 bytes
+func TestMemTableManagerSwitch(t *testing.T) {
+	mgr := NewMemTableManager(50) // 50 bytes
 	mgr.SetActiveWAL(1)
 
 	// 写入数据
@@ -69,8 +183,8 @@ func TestManagerSwitch(t *testing.T) {
 	t.Log("Manager switch test passed!")
 }
 
-func TestManagerMultipleImmutables(t *testing.T) {
-	mgr := NewManager(50)
+func TestMemTableManagerMultipleImmutables(t *testing.T) {
+	mgr := NewMemTableManager(50)
 	mgr.SetActiveWAL(1)
 
 	// 第一批数据
@@ -100,8 +214,8 @@ func TestManagerMultipleImmutables(t *testing.T) {
 	t.Log("Manager multiple immutables test passed!")
 }
 
-func TestManagerRemoveImmutable(t *testing.T) {
-	mgr := NewManager(50)
+func TestMemTableManagerRemoveImmutable(t *testing.T) {
+	mgr := NewMemTableManager(50)
 	mgr.SetActiveWAL(1)
 
 	// 创建 Immutable
@@ -124,8 +238,8 @@ func TestManagerRemoveImmutable(t *testing.T) {
 	t.Log("Manager remove immutable test passed!")
 }
 
-func TestManagerStats(t *testing.T) {
-	mgr := NewManager(100)
+func TestMemTableManagerStats(t *testing.T) {
+	mgr := NewMemTableManager(100)
 	mgr.SetActiveWAL(1)
 
 	// Active 数据
@@ -161,15 +275,15 @@ func TestManagerStats(t *testing.T) {
 	t.Log("Manager stats test passed!")
 }
 
-func TestManagerConcurrent(t *testing.T) {
-	mgr := NewManager(1024)
+func TestMemTableManagerConcurrent(t *testing.T) {
+	mgr := NewMemTableManager(1024)
 	mgr.SetActiveWAL(1)
 
 	// 并发写入
 	done := make(chan bool)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		go func(id int) {
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				key := int64(id*100 + j)
 				mgr.Put(key, []byte("value"))
 			}
@@ -178,7 +292,7 @@ func TestManagerConcurrent(t *testing.T) {
 	}
 
 	// 等待完成
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 

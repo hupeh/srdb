@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.tczkiot.com/srdb/sst"
+	"code.tczkiot.com/srdb"
 )
 
 // InspectAllSST 检查所有 SST 文件
@@ -35,7 +35,7 @@ func InspectAllSST(sstDir string) {
 	for _, filename := range sstFiles {
 		sstPath := filepath.Join(sstDir, filename)
 
-		reader, err := sst.NewReader(sstPath)
+		reader, err := srdb.NewSSTableReader(sstPath)
 		if err != nil {
 			fmt.Printf("%s: ERROR - %v\n", filename, err)
 			continue

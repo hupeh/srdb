@@ -3,9 +3,9 @@ package srdb
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
-
-	"code.tczkiot.com/srdb/sst"
 )
 
 type Fieldset interface {
@@ -489,29 +489,101 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 		visited: make(map[int64]bool),
 	}
 
-	// 初始化 Active MemTable 迭代器
+	// 收集所有数据源的 keys 并全局排序
+	// 立即读取数据避免 compaction 期间文件被删除
+	keyToRow := make(map[int64]*SSTableRow) // 存储已读取的行数据
+	var allKeys []int64
+
+	// 1. 从 Active MemTable 读取数据
 	activeMemTable := qb.engine.memtableManager.GetActive()
 	if activeMemTable != nil {
 		activeKeys := activeMemTable.Keys()
-		if len(activeKeys) > 0 {
-			rows.memIterator = newMemtableIterator(activeKeys)
+		for _, key := range activeKeys {
+			if data, ok := activeMemTable.Get(key); ok {
+				var row SSTableRow
+				if err := json.Unmarshal(data, &row); err == nil {
+					keyToRow[key] = &row
+					allKeys = append(allKeys, key)
+				}
+			}
 		}
 	}
 
-	// 准备 Immutable MemTables（延迟初始化）
-	rows.immutableIndex = 0
+	// 2. 从所有 Immutable MemTables 读取数据
+	immutables := qb.engine.memtableManager.GetImmutables()
+	for _, imm := range immutables {
+		immKeys := imm.MemTable.Keys()
+		for _, key := range immKeys {
+			// 如果 key 已存在（来自更新的数据源），跳过
+			if _, exists := keyToRow[key]; exists {
+				continue
+			}
 
-	// 初始化 SST 文件 readers
+			if data, ok := imm.MemTable.Get(key); ok {
+				var row SSTableRow
+				if err := json.Unmarshal(data, &row); err == nil {
+					keyToRow[key] = &row
+					allKeys = append(allKeys, key)
+				}
+			}
+		}
+	}
+
+	// 3. 收集所有 SST 文件的 keys
 	sstReaders := qb.engine.sstManager.GetReaders()
+
 	for _, reader := range sstReaders {
-		// 获取文件中实际存在的 key 列表（已排序）
-		// 这比 minKey→maxKey 逐个尝试高效 100-1000 倍（对于稀疏 key）
+		// 获取文件中实际存在的 key 列表（已在 GetAllKeys 中排序）
 		keys := reader.GetAllKeys()
-		rows.sstReaders = append(rows.sstReaders, &sstReader{
-			reader: reader,
-			keys:   keys,
-			index:  0,
-		})
+
+		// 记录所有 keys（实际数据稍后统一从 engine 读取）
+		for _, key := range keys {
+			// 如果 key 已存在（来自更新的数据源），跳过
+			if _, exists := keyToRow[key]; !exists {
+				allKeys = append(allKeys, key)
+				keyToRow[key] = nil // 占位，表示需要读取
+			}
+		}
+	}
+
+	// 4. 对所有 keys 排序
+	if len(allKeys) > 0 {
+		// 去重（使用 map 已经去重了，但 allKeys 可能有重复）
+		keySet := make(map[int64]bool)
+		uniqueKeys := make([]int64, 0, len(allKeys))
+		for _, key := range allKeys {
+			if !keySet[key] {
+				keySet[key] = true
+				uniqueKeys = append(uniqueKeys, key)
+			}
+		}
+
+		// 排序
+		slices.Sort(uniqueKeys)
+
+		// 统一从 engine 读取所有数据（避免 compaction 导致的文件删除）
+		rows.cachedRows = make([]*SSTableRow, 0, len(uniqueKeys))
+		for _, seq := range uniqueKeys {
+			// 如果已经从 MemTable 读取，直接使用
+			row := keyToRow[seq]
+			if row == nil {
+				// 从 engine 读取（会搜索 MemTable + 所有 SST，包括 compaction 后的新文件）
+				var err error
+				row, err = qb.engine.Get(seq)
+				if err != nil {
+					// 数据不存在（理论上不应该发生，因为 key 来自索引）
+					continue
+				}
+			}
+
+			if qb.Match(row.Data) {
+				rows.cachedRows = append(rows.cachedRows, row)
+			}
+		}
+
+		// 使用缓存模式
+		rows.cached = true
+		rows.cachedIndex = -1
 	}
 
 	return rows, nil
@@ -553,7 +625,7 @@ func (qb *QueryBuilder) Scan(value any) error {
 type Row struct {
 	schema *Schema
 	fields []string // 要选择的字段，nil 表示选择所有字段
-	inner  *sst.Row
+	inner  *SSTableRow
 }
 
 // Data 获取行数据（根据 Select 过滤字段）
@@ -563,13 +635,11 @@ func (r *Row) Data() map[string]any {
 	}
 
 	// 如果没有指定字段，返回所有数据（包括 _seq 和 _time）
-	if r.fields == nil || len(r.fields) == 0 {
+	if len(r.fields) == 0 {
 		result := make(map[string]any)
 		result["_seq"] = r.inner.Seq
 		result["_time"] = r.inner.Time
-		for k, v := range r.inner.Data {
-			result[k] = v
-		}
+		maps.Copy(result, r.inner.Data)
 		return result
 	}
 
@@ -636,7 +706,7 @@ type Rows struct {
 
 	// 缓存模式（用于 Collect/Data 等方法）
 	cached      bool
-	cachedRows  []*sst.Row
+	cachedRows  []*SSTableRow
 	cachedIndex int // 缓存模式下的迭代位置
 }
 
@@ -663,9 +733,8 @@ func (m *memtableIterator) next() (int64, bool) {
 
 // sstReader 包装 SST Reader 的迭代状态
 type sstReader struct {
-	reader any     // 实际的 SST reader
-	keys   []int64 // 文件中实际存在的 key 列表（已排序）
-	index  int     // 当前迭代位置
+	keys  []int64 // 文件中实际存在的 key 列表（已排序）
+	index int     // 当前迭代位置
 }
 
 // Next 移动到下一行，返回是否还有数据
@@ -769,7 +838,11 @@ func (r *Rows) nextFromCache() bool {
 	if r.cachedIndex >= len(r.cachedRows) {
 		return false
 	}
-	r.currentRow = &Row{schema: r.schema, fields: r.fields, inner: r.cachedRows[r.cachedIndex]}
+	r.currentRow = &Row{
+		schema: r.schema,
+		fields: r.fields,
+		inner:  r.cachedRows[r.cachedIndex],
+	}
 	return true
 }
 
@@ -860,7 +933,11 @@ func (r *Rows) Last() (*Row, error) {
 	if len(r.cachedRows) == 0 {
 		return nil, fmt.Errorf("no rows")
 	}
-	return &Row{schema: r.schema, fields: r.fields, inner: r.cachedRows[len(r.cachedRows)-1]}, nil
+	return &Row{
+		schema: r.schema,
+		fields: r.fields,
+		inner:  r.cachedRows[len(r.cachedRows)-1],
+	}, nil
 }
 
 // Count 返回总行数（别名）

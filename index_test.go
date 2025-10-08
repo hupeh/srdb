@@ -89,13 +89,13 @@ func TestIncrementalUpdate(t *testing.T) {
 	t.Logf("Initial: MaxSeq=%d, RowCount=%d", initialMetadata.MaxSeq, initialMetadata.RowCount)
 
 	// 2. 模拟新数据
-	mockData := map[int64]map[string]interface{}{
+	mockData := map[int64]map[string]any{
 		3: {"name": "Charlie"},
 		4: {"name": "David"},
 		5: {"name": "Alice"},
 	}
 
-	getData := func(seq int64) (map[string]interface{}, error) {
+	getData := func(seq int64) (map[string]any, error) {
 		if data, exists := mockData[seq]; exists {
 			return data, nil
 		}

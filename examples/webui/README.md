@@ -1,254 +1,413 @@
-# SRDB Web UI Example
+# SRDB WebUI - 数据库管理工具
 
-这个示例展示了如何使用 SRDB 的内置 Web UI 来可视化查看数据库中的表和数据。
+一个功能强大的 SRDB 数据库管理工具，集成了现代化的 Web 界面和实用的命令行工具。
 
-## 功能特性
+## 📋 目录
 
-- 📊 **表列表展示** - 左侧显示所有表及其行数
-- 🔍 **Schema 查看** - 点击箭头展开查看表的字段定义
-- 📋 **数据分页浏览** - 右侧以表格形式展示数据，支持分页
-- 🎨 **响应式设计** - 现代化的界面设计
-- ⚡ **零构建** - 使用 HTMX 从 CDN 加载，无需构建步骤
-- 💾 **大数据优化** - 自动截断显示，悬停查看，点击弹窗查看完整内容
-- 📏 **数据大小显示** - 超过 1KB 的单元格自动显示大小标签
-- 🔄 **后台数据插入** - 自动生成 2KB~512KB 的测试数据（每秒一条）
+- [功能特性](#功能特性)
+- [快速开始](#快速开始)
+- [Web UI 使用指南](#web-ui-使用指南)
+- [命令行工具](#命令行工具)
+- [技术架构](#技术架构)
+- [开发说明](#开发说明)
 
-## 运行示例
+---
+
+## 🎯 功能特性
+
+### Web UI
+
+#### 📊 数据管理
+- **表列表** - 查看所有表及其 Schema 信息
+- **数据浏览** - 分页浏览表数据，支持自定义列选择
+- **列持久化** - 自动保存列选择偏好到 localStorage
+- **数据详情** - 点击查看完整的行数据（JSON 格式）
+- **智能截断** - 长字符串自动截断，点击查看完整内容
+- **时间格式化** - 自动格式化 `_time` 字段为可读时间
+
+#### 🌳 LSM-Tree 管理
+- **Manifest 视图** - 可视化 LSM-Tree 层级结构
+- **文件详情** - 查看每层的 SST 文件信息
+- **Compaction 监控** - 实时查看 Compaction Score 和统计
+- **层级折叠** - 可展开/收起查看文件详情
+
+#### 🎨 用户体验
+- **响应式设计** - 完美适配桌面和移动设备
+- **深色/浅色主题** - 支持主题切换
+- **实时刷新** - 一键刷新当前视图数据
+- **移动端优化** - 侧边栏抽屉式导航
+
+### 命令行工具
+
+提供多个实用的数据库诊断和管理工具：
+
+| 命令 | 功能 | 说明 |
+|------|------|------|
+| `serve` | Web UI 服务器 | 启动 Web 管理界面 |
+| `check-data` | 数据检查 | 检查表数据完整性 |
+| `check-seq` | 序列号检查 | 验证特定序列号的数据 |
+| `dump-manifest` | Manifest 导出 | 导出 LSM-Tree 结构信息 |
+| `inspect-sst` | SST 文件检查 | 检查单个 SST 文件 |
+| `inspect-all-sst` | 批量 SST 检查 | 检查所有 SST 文件 |
+| `test-fix` | 修复测试 | 测试数据修复功能 |
+| `test-keys` | 键测试 | 测试键的存在性 |
+
+---
+
+## 🚀 快速开始
+
+### 1. 启动 Web UI
 
 ```bash
-# 进入示例目录
 cd examples/webui
 
-# 运行
-go run main.go
+# 使用默认配置（数据库：./data，端口：8080）
+go run main.go serve
+
+# 自定义配置
+go run main.go serve --db /path/to/database --port 3000
+
+# 启用自动数据插入（用于演示）
+go run main.go serve --auto-insert
 ```
 
-程序会：
-1. 创建/打开数据库目录 `./data`
-2. 创建三个示例表：`users`、`products` 和 `logs`
-3. 插入初始示例数据
-4. **启动后台协程** - 每秒向 `logs` 表插入一条 2KB~512KB 的随机数据
-5. 启动 Web 服务器在 `http://localhost:8080`
+### 2. 访问 Web UI
 
-## 使用界面
+打开浏览器访问：http://localhost:8080
 
-打开浏览器访问 `http://localhost:8080`，你将看到：
-
-### 左侧边栏
-- 显示所有表的列表
-- 显示每个表的字段数量
-- 点击 ▶ 图标展开查看字段信息
-- 点击表名选择要查看的表（蓝色高亮显示当前选中）
-
-### 右侧主区域
-- **Schema 区域**：显示表结构和字段定义
-- **Data 区域**：以表格形式显示数据
-  - 支持分页浏览（每页 20 条）
-  - 显示系统字段（_seq, _time）和用户字段
-  - **自动截断长数据**：超过 400px 的内容显示省略号
-  - **鼠标悬停**：悬停在单元格上查看完整内容
-  - **点击查看**：点击单元格在弹窗中查看完整内容
-  - **大小指示**：超过 1KB 的数据显示大小标签
-
-### 大数据查看
-1. **表格截断**：单元格最大宽度 400px，超长显示 `...`
-2. **悬停展开**：鼠标悬停自动展开，黄色背景高亮
-3. **模态框**：点击单元格弹出窗口
-   - 等宽字体显示（适合查看十六进制数据）
-   - 显示数据大小
-   - 支持滚动查看超长内容
-
-## API 端点
-
-Web UI 提供了以下 HTTP API：
-
-### 获取所有表
-```
-GET /api/tables
-```
-
-返回示例：
-```json
-[
-  {
-    "name": "users",
-    "rowCount": 5,
-    "dir": "./data/users"
-  }
-]
-```
-
-### 获取表的 Schema
-```
-GET /api/tables/{name}/schema
-```
-
-返回示例：
-```json
-{
-  "fields": [
-    {"name": "name", "type": "string", "required": true},
-    {"name": "email", "type": "string", "required": true},
-    {"name": "age", "type": "int", "required": false}
-  ]
-}
-```
-
-### 获取表数据（分页）
-```
-GET /api/tables/{name}/data?page=1&pageSize=20
-```
-
-参数：
-- `page` - 页码，从 1 开始（默认：1）
-- `pageSize` - 每页行数，最大 100（默认：20）
-
-返回示例：
-```json
-{
-  "page": 1,
-  "pageSize": 20,
-  "totalRows": 5,
-  "totalPages": 1,
-  "rows": [
-    {
-      "_seq": 1,
-      "_time": 1234567890,
-      "name": "Alice",
-      "email": "alice@example.com",
-      "age": 30
-    }
-  ]
-}
-```
-
-### 获取表基本信息
-```
-GET /api/tables/{name}
-```
-
-## 在你的应用中使用
-
-你可以在自己的应用中轻松集成 Web UI：
-
-```go
-package main
-
-import (
-    "net/http"
-    "code.tczkiot.com/srdb"
-)
-
-func main() {
-    // 打开数据库
-    db, _ := database.Open("./mydb")
-    defer db.Close()
-
-    // 获取 HTTP Handler
-    handler := db.WebUI()
-
-    // 启动服务器
-    http.ListenAndServe(":8080", handler)
-}
-```
-
-或者将其作为现有 Web 应用的一部分：
-
-```go
-mux := http.NewServeMux()
-
-// 你的其他路由
-mux.HandleFunc("/api/myapp", myHandler)
-
-// 挂载 SRDB Web UI 到 /admin/db 路径
-mux.Handle("/admin/db/", http.StripPrefix("/admin/db", db.WebUI()))
-
-http.ListenAndServe(":8080", mux)
-```
-
-## 技术栈
-
-- **后端**: Go + 标准库 `net/http`
-- **前端**: [HTMX](https://htmx.org/) + 原生 JavaScript + CSS
-- **渲染**: 服务端 HTML 渲染（Go 模板生成）
-- **字体**: Google Fonts (Inter)
-- **无构建**: 直接从 CDN 加载 HTMX，无需 npm、webpack 等工具
-- **部署**: 所有静态资源通过 `embed.FS` 嵌入到二进制文件中
-
-## 测试大数据
-
-### logs 表自动生成
-
-程序会在后台持续向 `logs` 表插入大数据：
-
-- **频率**：每秒一条
-- **大小**：2KB ~ 512KB 随机
-- **格式**：十六进制字符串
-- **字段**：
-  - `timestamp` - 插入时间
-  - `data` - 随机数据（十六进制）
-  - `size_bytes` - 数据大小（字节）
-
-你可以选择 `logs` 表来测试大数据的显示效果：
-1. 单元格会显示数据大小标签（如 `245.12 KB`）
-2. 内容被自动截断，显示省略号
-3. 点击单元格在弹窗中查看完整数据
-
-终端会实时输出插入日志：
-```
-Inserted record #1, size: 245.12 KB
-Inserted record #2, size: 128.50 KB
-Inserted record #3, size: 487.23 KB
-```
-
-## 注意事项
-
-- Web UI 是只读的，不提供数据修改功能
-- 适合用于开发、调试和数据查看
-- 生产环境建议添加身份验证和访问控制
-- 大数据量表的分页查询性能取决于数据分布
-- `logs` 表会持续增长，可手动删除 `./data/logs` 目录重置
-
-## Compaction 状态
-
-由于后台持续插入大数据，会产生大量 SST 文件。SRDB 会自动运行 compaction 合并这些文件。
-
-### 检查 Compaction 状态
+### 3. 命令行工具示例
 
 ```bash
-# 查看 SST 文件分布
-./check_sst.sh
+# 检查表数据
+go run main.go check-data --db ./data --table users
 
-# 观察 webui 日志中的 [Compaction] 信息
+# 检查特定序列号
+go run main.go check-seq --db ./data --table users --seq 123
+
+# 导出 Manifest
+go run main.go dump-manifest --db ./data --table users
+
+# 检查 SST 文件
+go run main.go inspect-sst --db ./data --table users --file 000001.sst
 ```
 
-### Compaction 改进
+---
 
-- **触发阈值**: L0 文件数量 ≥2 就触发（之前是 4）
-- **运行频率**: 每 10 秒自动检查
-- **日志增强**: 显示详细的 compaction 状态和统计
+## 📖 Web UI 使用指南
 
-详细说明请查看 [COMPACTION.md](./COMPACTION.md)
+### 界面布局
 
-## 常见问题
-
-### `invalid header` 错误
-
-如果看到类似错误：
 ```
-failed to open table logs: invalid header
+┌─────────────────────────────────────────────────┐
+│  SRDB Tables                          [🌙/☀️]  │  ← 侧边栏
+│  ├─ users                                       │
+│  ├─ orders                                      │
+│  └─ logs                                        │
+├─────────────────────────────────────────────────┤
+│  [☰] users                        [🔄 Refresh] │  ← 页头
+│  [Data] [Manifest / LSM-Tree]                  │  ← 视图切换
+├─────────────────────────────────────────────────┤
+│                                                 │
+│  Schema (点击字段卡片选择要显示的列)            │  ← Schema 区域
+│  ┌──────────┬──────────┬──────────┐            │
+│  │⚡ id     │● name    │⚡ email   │            │
+│  │[int64]   │[string]  │[string]  │            │
+│  └──────────┴──────────┴──────────┘            │
+│                                                 │
+│  Data (1,234 rows)                              │  ← 数据表格
+│  ┌─────┬──────┬───────────┬─────────┐          │
+│  │ _seq│ name │ email     │ Actions │          │
+│  ├─────┼──────┼───────────┼─────────┤          │
+│  │  1  │ John │ john@...  │ Detail  │          │
+│  │  2  │ Jane │ jane@...  │ Detail  │          │
+│  └─────┴──────┴───────────┴─────────┘          │
+│                                                 │
+├─────────────────────────────────────────────────┤
+│  [10/page] [Previous] Page 1 of 5 [Go] [Next] │  ← 分页控件
+└─────────────────────────────────────────────────┘
 ```
 
-**快速修复**：
+### 功能说明
+
+#### 1. 表列表（侧边栏）
+- 显示所有表及其字段信息
+- 点击表名切换到该表
+- 展开/收起查看字段详情
+- 字段图标：⚡ = 已索引，● = 未索引
+
+#### 2. Data 视图
+- **Schema 区域**：点击字段卡片选择要显示的列
+- **数据表格**：显示选中的列数据
+- **系统字段**：
+  - `_seq`：序列号（第一列）
+  - `_time`：时间戳（倒数第二列，自动格式化）
+- **Detail 按钮**：查看完整的行数据（JSON 格式）
+- **分页控件**：
+  - 每页大小：10/20/50/100
+  - 上一页/下一页
+  - 跳转到指定页
+
+#### 3. Manifest 视图
+- **统计卡片**：
+  - Active Levels：活跃层数
+  - Total Files：总文件数
+  - Total Size：总大小
+  - Compactions：Compaction 次数
+- **层级卡片**：
+  - 点击展开/收起查看文件列表
+  - Score 指示器：
+    - 🟢 绿色：健康（< 50%）
+    - 🟡 黄色：警告（50-80%）
+    - 🔴 红色：需要 Compaction（≥ 80%）
+- **文件详情**：
+  - 文件编号、大小、行数
+  - Seq 范围（min_key - max_key）
+
+#### 4. 刷新按钮
+- 点击刷新当前视图的数据
+- Data 视图：重新加载表数据
+- Manifest 视图：重新加载 LSM-Tree 结构
+
+#### 5. 主题切换
+- 点击右上角的 🌙/☀️ 图标
+- 切换深色/浅色主题
+- 自动保存到 localStorage
+
+---
+
+## 🛠️ 命令行工具
+
+### serve - Web UI 服务器
+
+启动 Web 管理界面。
+
 ```bash
-./fix_corrupted_table.sh logs
+go run main.go serve [flags]
 ```
 
-详见：[QUICK_FIX.md](./QUICK_FIX.md) 或 [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+**参数**：
+- `--db` - 数据库目录（默认：`./data`）
+- `--port` - 服务端口（默认：`8080`）
+- `--auto-insert` - 启用自动数据插入（用于演示）
 
-## 更多信息
+**示例**：
+```bash
+# 基本使用
+go run main.go serve
 
-- [FEATURES.md](./FEATURES.md) - 详细功能说明
-- [COMPACTION.md](./COMPACTION.md) - Compaction 机制和诊断
-- [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) - 故障排除指南
-- [QUICK_FIX.md](./QUICK_FIX.md) - 快速修复常见错误
+# 自定义端口
+go run main.go serve --port 3000
+
+# 启用自动插入（每秒插入一条随机数据到 logs 表）
+go run main.go serve --auto-insert
+```
+
+### check-data - 数据检查
+
+检查表数据的完整性。
+
+```bash
+go run main.go check-data --db ./data --table <table_name>
+```
+
+### check-seq - 序列号检查
+
+验证特定序列号的数据。
+
+```bash
+go run main.go check-seq --db ./data --table <table_name> --seq <sequence_number>
+```
+
+### dump-manifest - Manifest 导出
+
+导出 LSM-Tree 层级结构信息。
+
+```bash
+go run main.go dump-manifest --db ./data --table <table_name>
+```
+
+### inspect-sst - SST 文件检查
+
+检查单个 SST 文件的内容和元数据。
+
+```bash
+go run main.go inspect-sst --db ./data --table <table_name> --file <file_name>
+```
+
+### inspect-all-sst - 批量 SST 检查
+
+检查表的所有 SST 文件。
+
+```bash
+go run main.go inspect-all-sst --db ./data --table <table_name>
+```
+
+---
+
+## 🏗️ 技术架构
+
+### 前端技术栈
+
+- **Lit** - 轻量级 Web Components 框架
+- **ES Modules** - 原生 JavaScript 模块
+- **CSS Variables** - 主题系统
+- **Shadow DOM** - 组件封装
+
+### 组件架构
+
+```
+srdb-app (主应用)
+├── srdb-theme-toggle (主题切换)
+├── srdb-table-list (表列表)
+├── srdb-page-header (页头)
+│   └── [🔄 Refresh] (刷新按钮)
+├── srdb-table-view (表视图容器)
+│   ├── srdb-data-view (数据视图)
+│   │   ├── Schema 区域
+│   │   │   ├── srdb-field-icon (字段图标)
+│   │   │   └── srdb-badge (类型标签)
+│   │   └── 数据表格
+│   └── srdb-manifest-view (Manifest 视图)
+│       └── srdb-badge (Score 标签)
+└── srdb-modal-dialog (模态对话框)
+```
+
+### 后端架构
+
+```
+webui.go
+├── API Endpoints
+│   ├── GET /api/tables - 获取表列表
+│   ├── GET /api/tables/{name}/schema - 获取表 Schema
+│   ├── GET /api/tables/{name}/data - 获取表数据（分页）
+│   ├── GET /api/tables/{name}/data/{seq} - 获取单条数据
+│   └── GET /api/tables/{name}/manifest - 获取 Manifest 信息
+├── Static Files
+│   └── /static/* - 静态资源服务
+└── Index
+    └── / - 首页
+```
+
+### 数据流
+
+```
+用户操作
+  ↓
+组件事件 (CustomEvent)
+  ↓
+app.js (事件总线)
+  ↓
+API 请求 (fetch)
+  ↓
+webui.go (HTTP Handler)
+  ↓
+SRDB Database
+  ↓
+JSON 响应
+  ↓
+组件更新 (Lit reactive)
+  ↓
+UI 渲染
+```
+
+---
+
+## 🔧 开发说明
+
+### 项目结构
+
+```
+webui/
+├── commands/
+│   └── webui.go              # Web UI 服务器实现
+├── static/
+│   ├── index.html            # 主页面
+│   ├── css/
+│   │   └── styles.css        # 全局样式
+│   └── js/
+│       ├── app.js            # 应用入口和事件总线
+│       ├── components/       # Web Components
+│       │   ├── app.js        # 主应用容器
+│       │   ├── badge.js      # 标签组件
+│       │   ├── data-view.js  # 数据视图
+│       │   ├── field-icon.js # 字段图标
+│       │   ├── manifest-view.js # Manifest 视图
+│       │   ├── modal-dialog.js  # 模态对话框
+│       │   ├── page-header.js   # 页头
+│       │   ├── table-list.js    # 表列表
+│       │   ├── table-view.js    # 表视图容器
+│       │   └── theme-toggle.js  # 主题切换
+│       └── styles/
+│           └── shared-styles.js # 共享样式
+└── webui.go                  # Web UI 后端实现
+```
+
+### 添加新组件
+
+1. 在 `static/js/components/` 创建组件文件
+2. 继承 `LitElement`
+3. 定义 `static properties` 和 `static styles`
+4. 实现 `render()` 方法
+5. 使用 `customElements.define('srdb-xxx', Component)` 注册
+6. 在 `app.js` 中导入
+
+### 添加新 API
+
+1. 在 `webui.go` 中添加 handler 方法
+2. 在 `setupHandler()` 中注册路由
+3. 返回 JSON 格式的响应
+4. 在前端组件中调用 API
+
+### 样式规范
+
+- 使用 CSS Variables 定义颜色和尺寸
+- 组件样式封装在 Shadow DOM 中
+- 共享样式定义在 `shared-styles.js`
+- 响应式断点：768px
+
+### 命名规范
+
+- **组件名**：`srdb-xxx`（kebab-case）
+- **类名**：`ComponentName`（PascalCase）
+- **文件名**：`component-name.js`（kebab-case）
+- **CSS 类**：`.class-name`（kebab-case）
+
+---
+
+## 📝 注意事项
+
+### 性能优化
+
+1. **列选择**：只加载选中的列，减少数据传输
+2. **字符串截断**：长字符串自动截断，按需加载完整内容
+3. **分页加载**：大表数据分页加载，避免一次性加载全部
+4. **Shadow DOM**：组件样式隔离，避免全局样式污染
+
+### 浏览器兼容性
+
+- Chrome 90+
+- Firefox 88+
+- Safari 14+
+- Edge 90+
+
+需要支持：
+- ES Modules
+- Web Components
+- Shadow DOM
+- CSS Variables
+
+### 已知限制
+
+1. **大数据量**：单页最多显示 1000 条数据
+2. **字符串长度**：超过 100 字符自动截断
+3. **并发限制**：同时只能查看一个表的数据
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📄 许可证
+
+MIT License

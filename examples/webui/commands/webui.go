@@ -24,14 +24,14 @@ func StartWebUI(dbPath string, addr string) {
 
 	// 创建示例 Schema
 	userSchema := srdb.NewSchema("users", []srdb.Field{
-		{Name: "name", Type: srdb.FieldTypeString, Indexed: false, Comment: "User name"},
+		{Name: "name", Type: srdb.FieldTypeString, Indexed: true, Comment: "User name"},
 		{Name: "email", Type: srdb.FieldTypeString, Indexed: false, Comment: "Email address"},
 		{Name: "age", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "Age"},
 		{Name: "city", Type: srdb.FieldTypeString, Indexed: false, Comment: "City"},
 	})
 
 	productSchema := srdb.NewSchema("products", []srdb.Field{
-		{Name: "product_name", Type: srdb.FieldTypeString, Indexed: false, Comment: "Product name"},
+		{Name: "product_name", Type: srdb.FieldTypeString, Indexed: true, Comment: "Product name"},
 		{Name: "price", Type: srdb.FieldTypeFloat, Indexed: false, Comment: "Price"},
 		{Name: "quantity", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "Quantity"},
 		{Name: "category", Type: srdb.FieldTypeString, Indexed: false, Comment: "Category"},
@@ -56,7 +56,7 @@ func StartWebUI(dbPath string, addr string) {
 			log.Printf("Create users table failed: %v", err)
 		} else {
 			// 插入一些示例数据
-			users := []map[string]interface{}{
+			users := []map[string]any{
 				{"name": "Alice", "email": "alice@example.com", "age": 30, "city": "Beijing"},
 				{"name": "Bob", "email": "bob@example.com", "age": 25, "city": "Shanghai"},
 				{"name": "Charlie", "email": "charlie@example.com", "age": 35, "city": "Guangzhou"},
@@ -76,7 +76,7 @@ func StartWebUI(dbPath string, addr string) {
 			log.Printf("Create products table failed: %v", err)
 		} else {
 			// 插入一些示例数据
-			products := []map[string]interface{}{
+			products := []map[string]any{
 				{"product_name": "Laptop", "price": 999.99, "quantity": 10, "category": "Electronics"},
 				{"product_name": "Mouse", "price": 29.99, "quantity": 50, "category": "Electronics"},
 				{"product_name": "Keyboard", "price": 79.99, "quantity": 30, "category": "Electronics"},
@@ -126,15 +126,15 @@ func autoInsertData(db *srdb.Database) {
 	defer ticker.Stop()
 
 	counter := 1
+	var logsTable *srdb.Table
 
 	for range ticker.C {
 		tables := db.ListTables()
-		var logsTable *srdb.Table
-
 		hasLogs := slices.Contains(tables, "logs")
 
 		if !hasLogs {
 			logsSchema := srdb.NewSchema("logs", []srdb.Field{
+				{Name: "group", Type: srdb.FieldTypeString, Indexed: true, Comment: "Log group (A-E)"},
 				{Name: "timestamp", Type: srdb.FieldTypeString, Indexed: false, Comment: "Timestamp"},
 				{Name: "data", Type: srdb.FieldTypeString, Indexed: false, Comment: "Random data"},
 				{Name: "size_bytes", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "Data size in bytes"},
@@ -151,7 +151,6 @@ func autoInsertData(db *srdb.Database) {
 			var err error
 			logsTable, err = db.GetTable("logs")
 			if err != nil || logsTable == nil {
-				log.Printf("Failed to get logs table: %v", err)
 				continue
 			}
 		}
@@ -159,7 +158,12 @@ func autoInsertData(db *srdb.Database) {
 		data := generateRandomData()
 		sizeBytes := len(data)
 
+		// 随机选择一个组 (A-E)
+		groups := []string{"A", "B", "C", "D", "E"}
+		group := groups[counter%len(groups)]
+
 		record := map[string]any{
+			"group":      group,
 			"timestamp":  time.Now().Format(time.RFC3339),
 			"data":       data,
 			"size_bytes": int64(sizeBytes),
@@ -170,7 +174,7 @@ func autoInsertData(db *srdb.Database) {
 			log.Printf("Failed to insert data: %v", err)
 		} else {
 			sizeStr := formatBytes(sizeBytes)
-			log.Printf("Inserted record #%d, size: %s", counter, sizeStr)
+			log.Printf("Inserted record #%d, group: %s, size: %s", counter, group, sizeStr)
 			counter++
 		}
 	}
