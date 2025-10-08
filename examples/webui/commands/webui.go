@@ -9,8 +9,8 @@ import (
 	"slices"
 	"time"
 
-	"code.tczkiot.com/srdb"
-	"code.tczkiot.com/srdb/webui"
+	"code.tczkiot.com/wlw/srdb"
+	"code.tczkiot.com/wlw/srdb/webui"
 )
 
 // StartWebUI 启动 WebUI 服务器

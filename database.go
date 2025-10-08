@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // Database 数据库，管理多个表
@@ -108,8 +109,11 @@ func (db *Database) recoverTables() error {
 	var failedTables []string
 
 	for _, tableInfo := range db.metadata.Tables {
-		// FIXME: 是否需要校验 tableInfo.Dir ?
-		table, err := openTable(tableInfo.Name, db)
+		tableDir := filepath.Join(db.dir, tableInfo.Name)
+		table, err := OpenTable(&TableOptions{
+			Dir:          tableDir,
+			MemTableSize: DefaultMemTableSize,
+		})
 		if err != nil {
 			// 记录失败的表，但继续恢复其他表
 			failedTables = append(failedTables, tableInfo.Name)
@@ -137,12 +141,25 @@ func (db *Database) CreateTable(name string, schema *Schema) (*Table, error) {
 
 	// 检查表是否已存在
 	if _, exists := db.tables[name]; exists {
-		return nil, fmt.Errorf("table %s already exists", name)
+		return nil, NewErrorf(ErrCodeTableExists, "table %s already exists", name)
+	}
+
+	// 创建表目录
+	tableDir := filepath.Join(db.dir, name)
+	err := os.MkdirAll(tableDir, 0755)
+	if err != nil {
+		return nil, err
 	}
 
 	// 创建表
-	table, err := createTable(name, schema, db)
+	table, err := OpenTable(&TableOptions{
+		Dir:          tableDir,
+		MemTableSize: DefaultMemTableSize,
+		Name:         schema.Name,
+		Fields:       schema.Fields,
+	})
 	if err != nil {
+		os.RemoveAll(tableDir)
 		return nil, err
 	}
 
@@ -153,7 +170,7 @@ func (db *Database) CreateTable(name string, schema *Schema) (*Table, error) {
 	db.metadata.Tables = append(db.metadata.Tables, TableInfo{
 		Name:      name,
 		Dir:       name,
-		CreatedAt: table.createdAt,
+		CreatedAt: time.Now().Unix(),
 	})
 
 	err = db.saveMetadata()
@@ -171,7 +188,7 @@ func (db *Database) GetTable(name string) (*Table, error) {
 
 	table, exists := db.tables[name]
 	if !exists {
-		return nil, fmt.Errorf("table %s not found", name)
+		return nil, NewErrorf(ErrCodeTableNotFound, "table %s not found", name)
 	}
 
 	return table, nil
@@ -185,7 +202,7 @@ func (db *Database) DropTable(name string) error {
 	// 检查表是否存在
 	table, exists := db.tables[name]
 	if !exists {
-		return fmt.Errorf("table %s not found", name)
+		return NewErrorf(ErrCodeTableNotFound, "table %s not found", name)
 	}
 
 	// 关闭表

@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"code.tczkiot.com/srdb"
+	"code.tczkiot.com/wlw/srdb"
 )
 
 // InspectSST 检查特定 SST 文件

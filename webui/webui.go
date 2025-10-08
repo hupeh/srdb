@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.tczkiot.com/srdb"
+	"code.tczkiot.com/wlw/srdb"
 )
 
 //go:embed static
@@ -94,7 +94,7 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 
 		tables = append(tables, TableListItem{
 			Name:      name,
-			CreatedAt: table.GetCreatedAt(),
+			CreatedAt: 0, // TODO: Table 不再有 createdAt 字段
 			Fields:    fields,
 		})
 	}
@@ -193,8 +193,7 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 		return
 	}
 
-	engine := table.GetEngine()
-	versionSet := engine.GetVersionSet()
+	versionSet := table.GetVersionSet()
 	version := versionSet.GetCurrent()
 
 	// 构建每层的信息
@@ -216,7 +215,7 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 	}
 
 	// 获取 Compaction Manager 和 Picker
-	compactionMgr := engine.GetCompactionManager()
+	compactionMgr := table.GetCompactionManager()
 	picker := compactionMgr.GetPicker()
 
 	levels := make([]LevelInfo, 0)

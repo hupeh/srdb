@@ -1,4 +1,4 @@
-.PHONY: help test test-verbose test-coverage test-race test-bench test-engine test-compaction test-btree test-memtable test-sstable test-wal test-version test-schema test-index test-database fmt fmt-check vet tidy verify clean build run-webui install-webui
+.PHONY: help test test-verbose test-coverage test-race test-bench test-table test-compaction test-btree test-memtable test-sstable test-wal test-version test-schema test-index test-database fmt fmt-check vet tidy verify clean build run-webui install-webui
 
 # 默认目标
 .DEFAULT_GOAL := help
@@ -40,9 +40,9 @@ test-bench: ## 运行基准测试
 	@echo "$(GREEN)运行基准测试...$(RESET)"
 	@go test -bench=. -benchmem $$(go list ./... | grep -v /examples/)
 
-test-engine: ## 只运行 engine 测试
-	@echo "$(GREEN)运行 engine 测试...$(RESET)"
-	@go test -v -run TestEngine
+test-table: ## 只运行 table 测试
+	@echo "$(GREEN)运行 table 测试...$(RESET)"
+	@go test -v -run TestTable
 
 test-compaction: ## 只运行 compaction 测试
 	@echo "$(GREEN)运行 compaction 测试...$(RESET)"

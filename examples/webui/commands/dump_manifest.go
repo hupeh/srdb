@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"code.tczkiot.com/srdb"
+	"code.tczkiot.com/wlw/srdb"
 )
 
 // DumpManifest 导出 manifest 信息
@@ -20,12 +20,11 @@ func DumpManifest(dbPath string) {
 		log.Fatal(err)
 	}
 
-	engine := table.GetEngine()
-	versionSet := engine.GetVersionSet()
+	versionSet := table.GetVersionSet()
 	version := versionSet.GetCurrent()
 
 	// Check for duplicates in each level
-	for level := 0; level < 7; level++ {
+	for level := range 7 {
 		files := version.GetLevel(level)
 		if len(files) == 0 {
 			continue

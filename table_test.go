@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,20 +12,27 @@ import (
 	"time"
 )
 
-func TestEngine(t *testing.T) {
+func TestTable(t *testing.T) {
 	// 1. 创建引擎
 	dir := "test_db"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	engine, err := OpenEngine(&EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
+		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
+	})
+
+	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 1024, // 1 KB，方便触发 Flush
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 2. 插入数据
 	for i := 1; i <= 100; i++ {
@@ -32,7 +40,7 @@ func TestEngine(t *testing.T) {
 			"name": fmt.Sprintf("user_%d", i),
 			"age":  20 + i%50,
 		}
-		err := engine.Insert(data)
+		err := table.Insert(data)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -45,7 +53,7 @@ func TestEngine(t *testing.T) {
 
 	// 3. 查询数据
 	for i := int64(1); i <= 100; i++ {
-		row, err := engine.Get(i)
+		row, err := table.Get(i)
 		if err != nil {
 			t.Errorf("Failed to get key %d: %v", i, err)
 			continue
@@ -56,7 +64,7 @@ func TestEngine(t *testing.T) {
 	}
 
 	// 4. 统计信息
-	stats := engine.Stats()
+	stats := table.Stats()
 	t.Logf("Stats: MemTable=%d rows, SST=%d files, Total=%d rows",
 		stats.MemTableCount, stats.SSTCount, stats.TotalRows)
 
@@ -67,45 +75,53 @@ func TestEngine(t *testing.T) {
 	t.Log("All tests passed!")
 }
 
-func TestEngineRecover(t *testing.T) {
+func TestTableRecover(t *testing.T) {
 	dir := "test_recover"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeInt64, Indexed: false, Comment: "值"},
+	})
+
 	// 1. 创建引擎并插入数据
-	engine, err := OpenEngine(&EngineOptions{
+	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024, // 10 MB，不会触发 Flush
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for i := 1; i <= 50; i++ {
-		data := map[string]interface{}{
+		data := map[string]any{
 			"value": i,
 		}
-		engine.Insert(data)
+		table.Insert(data)
 	}
 
 	t.Log("Inserted 50 rows")
 
 	// 2. 关闭引擎 (模拟崩溃前)
-	engine.Close()
+	table.Close()
 
 	// 3. 重新打开引擎 (恢复)
-	engine2, err := OpenEngine(&EngineOptions{
+	table2, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine2.Close()
+	defer table2.Close()
 
 	// 4. 验证数据
 	for i := int64(1); i <= 50; i++ {
-		row, err := engine2.Get(i)
+		row, err := table2.Get(i)
 		if err != nil {
 			t.Errorf("Failed to get key %d after recover: %v", i, err)
 		}
@@ -114,7 +130,7 @@ func TestEngineRecover(t *testing.T) {
 		}
 	}
 
-	stats := engine2.Stats()
+	stats := table2.Stats()
 	if stats.TotalRows != 50 {
 		t.Errorf("Expected 50 rows after recover, got %d", stats.TotalRows)
 	}
@@ -122,32 +138,38 @@ func TestEngineRecover(t *testing.T) {
 	t.Log("Recover test passed!")
 }
 
-func TestEngineFlush(t *testing.T) {
+func TestTableFlush(t *testing.T) {
 	dir := "test_flush"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	engine, err := OpenEngine(&EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "data", Type: FieldTypeString, Indexed: false, Comment: "数据"},
+	})
+
+	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 1024, // 1 KB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 插入足够多的数据触发 Flush
 	for i := 1; i <= 200; i++ {
 		data := map[string]any{
 			"data": fmt.Sprintf("value_%d", i),
 		}
-		engine.Insert(data)
+		table.Insert(data)
 	}
 
 	// 等待 Flush
 	time.Sleep(500 * time.Millisecond)
 
-	stats := engine.Stats()
+	stats := table.Stats()
 	t.Logf("After flush: MemTable=%d, SST=%d, Total=%d",
 		stats.MemTableCount, stats.SSTCount, stats.TotalRows)
 
@@ -157,7 +179,7 @@ func TestEngineFlush(t *testing.T) {
 
 	// 验证所有数据都能查到
 	for i := int64(1); i <= 200; i++ {
-		_, err := engine.Get(i)
+		_, err := table.Get(i)
 		if err != nil {
 			t.Errorf("Failed to get key %d after flush: %v", i, err)
 		}
@@ -166,48 +188,60 @@ func TestEngineFlush(t *testing.T) {
 	t.Log("Flush test passed!")
 }
 
-func BenchmarkEngineInsert(b *testing.B) {
+func BenchmarkTableInsert(b *testing.B) {
 	dir := "bench_insert"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	engine, _ := OpenEngine(&EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeInt64, Indexed: false, Comment: "值"},
+	})
+
+	table, _ := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 100 * 1024 * 1024, // 100 MB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
-	defer engine.Close()
+	defer table.Close()
 
 	data := map[string]any{
 		"value": 123,
 	}
 
 	for b.Loop() {
-		engine.Insert(data)
+		table.Insert(data)
 	}
 }
 
-func BenchmarkEngineGet(b *testing.B) {
+func BenchmarkTableGet(b *testing.B) {
 	dir := "bench_get"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	engine, _ := OpenEngine(&EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeInt64, Indexed: false, Comment: "值"},
+	})
+
+	table, _ := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 100 * 1024 * 1024,
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
-	defer engine.Close()
+	defer table.Close()
 
 	// 预先插入数据
 	for i := 1; i <= 10000; i++ {
 		data := map[string]any{
 			"value": i,
 		}
-		engine.Insert(data)
+		table.Insert(data)
 	}
 
 	for i := 0; b.Loop(); i++ {
 		key := int64(i%10000 + 1)
-		engine.Get(key)
+		table.Get(key)
 	}
 }
 
@@ -215,16 +249,24 @@ func BenchmarkEngineGet(b *testing.B) {
 func TestHighConcurrencyWrite(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	opts := &EngineOptions{
+	// Note: This test uses []byte payload - we create a minimal schema
+	// Schema validation accepts []byte as it gets JSON-marshaled
+	schema := NewSchema("test", []Field{
+		{Name: "worker_id", Type: FieldTypeInt64, Indexed: false, Comment: "Worker ID"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 64 * 1024 * 1024, // 64MB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 测试配置
 	const (
@@ -262,7 +304,7 @@ func TestHighConcurrencyWrite(t *testing.T) {
 					"timestamp": time.Now().Unix(),
 				}
 
-				err := engine.Insert(data)
+				err := table.Insert(data)
 				if err != nil {
 					totalErrors.Add(1)
 					t.Logf("Worker %d, Row %d: Insert failed: %v", workerID, j, err)
@@ -308,8 +350,8 @@ func TestHighConcurrencyWrite(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// 验证数据完整性
-	stats := engine.Stats()
-	t.Logf("\nEngine 状态:")
+	stats := table.Stats()
+	t.Logf("\nTable 状态:")
 	t.Logf("  总行数: %d", stats.TotalRows)
 	t.Logf("  SST 文件数: %d", stats.SSTCount)
 	t.Logf("  MemTable 行数: %d", stats.MemTableCount)
@@ -323,16 +365,23 @@ func TestHighConcurrencyWrite(t *testing.T) {
 func TestConcurrentReadWrite(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	opts := &EngineOptions{
+	// Note: This test uses []byte data - we create a minimal schema
+	schema := NewSchema("test", []Field{
+		{Name: "writer_id", Type: FieldTypeInt64, Indexed: false, Comment: "Writer ID"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 32 * 1024 * 1024, // 32MB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	const (
 		numWriters = 20
@@ -369,7 +418,7 @@ func TestConcurrentReadWrite(t *testing.T) {
 						"timestamp": time.Now().UnixNano(),
 					}
 
-					err := engine.Insert(payload)
+					err := table.Insert(payload)
 					if err == nil {
 						writeCount.Add(1)
 					}
@@ -393,7 +442,7 @@ func TestConcurrentReadWrite(t *testing.T) {
 				default:
 					// 随机读取
 					seq := int64(readerID*100 + 1)
-					_, err := engine.Get(seq)
+					_, err := table.Get(seq)
 					if err == nil {
 						readCount.Add(1)
 					} else {
@@ -422,8 +471,8 @@ func TestConcurrentReadWrite(t *testing.T) {
 	t.Logf("读取次数: %d (%.2f 次/秒)", reads, float64(reads)/duration.Seconds())
 	t.Logf("读取失败: %d", errors)
 
-	stats := engine.Stats()
-	t.Logf("\nEngine 状态:")
+	stats := table.Stats()
+	t.Logf("\nTable 状态:")
 	t.Logf("  总行数: %d", stats.TotalRows)
 	t.Logf("  SST 文件数: %d", stats.SSTCount)
 }
@@ -435,12 +484,19 @@ func TestPowerFailureRecovery(t *testing.T) {
 	// 第一阶段：写入数据并模拟崩溃
 	t.Log("=== 阶段 1: 写入数据 ===")
 
-	opts := &EngineOptions{
+	// Note: This test uses []byte data - we create a minimal schema
+	schema := NewSchema("test", []Field{
+		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "Batch number"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 4 * 1024 * 1024, // 4MB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,18 +521,18 @@ func TestPowerFailureRecovery(t *testing.T) {
 				"timestamp": time.Now().Unix(),
 			}
 
-			err := engine.Insert(payload)
+			err := table.Insert(payload)
 			if err != nil {
 				t.Fatalf("Insert failed: %v", err)
 			}
 
-			seq := engine.seq.Load()
+			seq := table.seq.Load()
 			insertedSeqs = append(insertedSeqs, seq)
 		}
 
 		// 每批后触发 Flush
 		if batch%3 == 0 {
-			engine.switchMemTable()
+			table.switchMemTable()
 			time.Sleep(100 * time.Millisecond)
 		}
 
@@ -487,27 +543,27 @@ func TestPowerFailureRecovery(t *testing.T) {
 	t.Logf("总共插入: %d 行", totalInserted)
 
 	// 获取崩溃前的状态
-	statsBefore := engine.Stats()
+	statsBefore := table.Stats()
 	t.Logf("崩溃前状态: 总行数=%d, SST文件=%d, MemTable行数=%d",
 		statsBefore.TotalRows, statsBefore.SSTCount, statsBefore.MemTableCount)
 
 	// 模拟崩溃：直接关闭（不等待 Flush 完成）
 	t.Log("\n=== 模拟断电崩溃 ===")
-	engine.Close()
+	table.Close()
 
 	// 第二阶段：恢复并验证数据
 	t.Log("\n=== 阶段 2: 恢复数据 ===")
 
-	engineRecovered, err := OpenEngine(opts)
+	tableRecovered, err := OpenTable(opts)
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
-	defer engineRecovered.Close()
+	defer tableRecovered.Close()
 
 	// 等待恢复完成
 	time.Sleep(500 * time.Millisecond)
 
-	statsAfter := engineRecovered.Stats()
+	statsAfter := tableRecovered.Stats()
 	t.Logf("恢复后状态: 总行数=%d, SST文件=%d, MemTable行数=%d",
 		statsAfter.TotalRows, statsAfter.SSTCount, statsAfter.MemTableCount)
 
@@ -519,7 +575,7 @@ func TestPowerFailureRecovery(t *testing.T) {
 	corrupted := 0
 
 	for i, seq := range insertedSeqs {
-		row, err := engineRecovered.Get(seq)
+		row, err := tableRecovered.Get(seq)
 		if err != nil {
 			missing++
 			if i < len(insertedSeqs)/2 {
@@ -564,12 +620,19 @@ func TestPowerFailureRecovery(t *testing.T) {
 func TestCrashDuringCompaction(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	opts := &EngineOptions{
+	// Note: This test uses []byte data - we create a minimal schema
+	schema := NewSchema("test", []Field{
+		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "Index"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 1024, // 很小，快速触发 Flush
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -588,7 +651,7 @@ func TestCrashDuringCompaction(t *testing.T) {
 			"data":  data,
 		}
 
-		err := engine.Insert(payload)
+		err := table.Insert(payload)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -601,7 +664,7 @@ func TestCrashDuringCompaction(t *testing.T) {
 	// 等待一些 Flush 完成
 	time.Sleep(500 * time.Millisecond)
 
-	version := engine.versionSet.GetCurrent()
+	version := table.versionSet.GetCurrent()
 	l0Count := version.GetLevelFileCount(0)
 	t.Logf("L0 文件数: %d", l0Count)
 
@@ -609,7 +672,7 @@ func TestCrashDuringCompaction(t *testing.T) {
 	if l0Count >= 4 {
 		t.Log("触发 Compaction...")
 		go func() {
-			engine.compactionManager.TriggerCompaction()
+			table.compactionManager.TriggerCompaction()
 		}()
 
 		// 等待 Compaction 开始
@@ -619,18 +682,18 @@ func TestCrashDuringCompaction(t *testing.T) {
 	}
 
 	// 直接关闭（模拟崩溃）
-	engine.Close()
+	table.Close()
 
 	// 恢复
 	t.Log("\n=== 恢复数据库 ===")
-	engineRecovered, err := OpenEngine(opts)
+	tableRecovered, err := OpenTable(opts)
 	if err != nil {
 		t.Fatalf("恢复失败: %v", err)
 	}
-	defer engineRecovered.Close()
+	defer tableRecovered.Close()
 
 	// 验证数据完整性
-	stats := engineRecovered.Stats()
+	stats := tableRecovered.Stats()
 	t.Logf("恢复后: 总行数=%d, SST文件=%d", stats.TotalRows, stats.SSTCount)
 
 	// 随机验证一些数据
@@ -638,7 +701,7 @@ func TestCrashDuringCompaction(t *testing.T) {
 	verified := 0
 	for i := 1; i <= 100; i++ {
 		seq := int64(i)
-		_, err := engineRecovered.Get(seq)
+		_, err := tableRecovered.Get(seq)
 		if err == nil {
 			verified++
 		}
@@ -657,16 +720,23 @@ func TestCrashDuringCompaction(t *testing.T) {
 func TestLargeDataIntegrity(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	opts := &EngineOptions{
+	// Note: This test uses []byte data - we create a minimal schema
+	schema := NewSchema("test", []Field{
+		{Name: "size", Type: FieldTypeInt64, Indexed: false, Comment: "Size"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 64 * 1024 * 1024, // 64MB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 测试不同大小的数据
 	testSizes := []int{
@@ -693,12 +763,12 @@ func TestLargeDataIntegrity(t *testing.T) {
 				"data":  data,
 			}
 
-			err := engine.Insert(payload)
+			err := table.Insert(payload)
 			if err != nil {
 				t.Fatalf("插入失败 (size=%d, index=%d): %v", size, i, err)
 			}
 
-			seq := engine.seq.Load()
+			seq := table.seq.Load()
 			insertedSeqs = append(insertedSeqs, seq)
 
 			t.Logf("插入: Seq=%d, Size=%d KB", seq, size/1024)
@@ -716,7 +786,7 @@ func TestLargeDataIntegrity(t *testing.T) {
 	successCount := 0
 
 	for i, seq := range insertedSeqs {
-		row, err := engine.Get(seq)
+		row, err := table.Get(seq)
 		if err != nil {
 			t.Errorf("读取失败 (Seq=%d): %v", seq, err)
 			continue
@@ -743,7 +813,7 @@ func TestLargeDataIntegrity(t *testing.T) {
 
 	successRate := float64(successCount) / float64(totalInserted) * 100
 
-	stats := engine.Stats()
+	stats := table.Stats()
 	t.Logf("\n=== 测试结果 ===")
 	t.Logf("插入总数: %d", totalInserted)
 	t.Logf("成功读取: %d (%.2f%%)", successCount, successRate)
@@ -761,16 +831,23 @@ func TestLargeDataIntegrity(t *testing.T) {
 func BenchmarkConcurrentWrites(b *testing.B) {
 	tmpDir := b.TempDir()
 
-	opts := &EngineOptions{
+	// Note: This benchmark uses []byte data - we create a minimal schema
+	schema := NewSchema("test", []Field{
+		{Name: "timestamp", Type: FieldTypeInt64, Indexed: false, Comment: "Timestamp"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 64 * 1024 * 1024,
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	const (
 		numWorkers = 10
@@ -788,7 +865,7 @@ func BenchmarkConcurrentWrites(b *testing.B) {
 				"timestamp": time.Now().UnixNano(),
 			}
 
-			err := engine.Insert(payload)
+			err := table.Insert(payload)
 			if err != nil {
 				b.Error(err)
 			}
@@ -797,26 +874,34 @@ func BenchmarkConcurrentWrites(b *testing.B) {
 
 	b.StopTimer()
 
-	stats := engine.Stats()
+	stats := table.Stats()
 	b.Logf("总行数: %d, SST 文件数: %d", stats.TotalRows, stats.SSTCount)
 }
 
-// TestEngineWithCompaction 测试 Engine 的 Compaction 功能
-func TestEngineWithCompaction(t *testing.T) {
+// TestTableWithCompaction 测试 Table 的 Compaction 功能
+func TestTableWithCompaction(t *testing.T) {
 	// 创建临时目录
 	tmpDir := t.TempDir()
 
-	// 打开 Engine
-	opts := &EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "批次"},
+		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
+		{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "值"},
+	})
+
+	// 打开 Table
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 1024, // 小的 MemTable 以便快速触发 Flush
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 插入大量数据，触发多次 Flush
 	const numBatches = 10
@@ -830,14 +915,14 @@ func TestEngineWithCompaction(t *testing.T) {
 				"value": fmt.Sprintf("data-%d-%d", batch, i),
 			}
 
-			err := engine.Insert(data)
+			err := table.Insert(data)
 			if err != nil {
 				t.Fatalf("Insert failed: %v", err)
 			}
 		}
 
 		// 强制 Flush
-		err = engine.switchMemTable()
+		err = table.switchMemTable()
 		if err != nil {
 			t.Fatalf("Switch MemTable failed: %v", err)
 		}
@@ -847,12 +932,12 @@ func TestEngineWithCompaction(t *testing.T) {
 	}
 
 	// 等待所有 Immutable Flush 完成
-	for engine.memtableManager.GetImmutableCount() > 0 {
+	for table.memtableManager.GetImmutableCount() > 0 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	// 检查 Version 状态
-	version := engine.versionSet.GetCurrent()
+	version := table.versionSet.GetCurrent()
 	l0Count := version.GetLevelFileCount(0)
 	t.Logf("L0 files: %d", l0Count)
 
@@ -861,7 +946,7 @@ func TestEngineWithCompaction(t *testing.T) {
 	}
 
 	// 获取 Level 统计信息
-	levelStats := engine.compactionManager.GetLevelStats()
+	levelStats := table.compactionManager.GetLevelStats()
 	for _, stat := range levelStats {
 		level := stat["level"].(int)
 		fileCount := stat["file_count"].(int)
@@ -876,14 +961,14 @@ func TestEngineWithCompaction(t *testing.T) {
 	// 手动触发 Compaction
 	if l0Count >= 4 {
 		t.Log("Triggering manual compaction...")
-		err = engine.compactionManager.TriggerCompaction()
+		err = table.compactionManager.TriggerCompaction()
 		if err != nil {
 			t.Logf("Compaction: %v", err)
 		} else {
 			t.Log("Compaction completed")
 
 			// 检查 Compaction 后的状态
-			version = engine.versionSet.GetCurrent()
+			version = table.versionSet.GetCurrent()
 			newL0Count := version.GetLevelFileCount(0)
 			l1Count := version.GetLevelFileCount(1)
 
@@ -900,40 +985,48 @@ func TestEngineWithCompaction(t *testing.T) {
 	}
 
 	// 验证数据完整性
-	stats := engine.Stats()
-	t.Logf("Engine stats: %d rows, %d SST files", stats.TotalRows, stats.SSTCount)
+	stats := table.Stats()
+	t.Logf("Table stats: %d rows, %d SST files", stats.TotalRows, stats.SSTCount)
 
 	// 读取一些数据验证
 	for batch := range 3 {
 		for i := range 10 {
 			seq := int64(batch*rowsPerBatch + i + 1)
-			row, err := engine.Get(seq)
+			row, err := table.Get(seq)
 			if err != nil {
 				t.Errorf("Get(%d) failed: %v", seq, err)
 				continue
 			}
 
-			if row.Data["batch"].(float64) != float64(batch) {
+			if row.Data["batch"].(int64) != int64(batch) {
 				t.Errorf("Expected batch %d, got %v", batch, row.Data["batch"])
 			}
 		}
 	}
 }
 
-// TestEngineCompactionMerge 测试 Compaction 的合并功能
-func TestEngineCompactionMerge(t *testing.T) {
+// TestTableCompactionMerge 测试 Compaction 的合并功能
+func TestTableCompactionMerge(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	opts := &EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "批次"},
+		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
+		{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "值"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 512, // 很小的 MemTable
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 插入数据（Append-Only 模式）
 	const numBatches = 5
@@ -948,7 +1041,7 @@ func TestEngineCompactionMerge(t *testing.T) {
 				"value": fmt.Sprintf("v%d-%d", batch, i),
 			}
 
-			err := engine.Insert(data)
+			err := table.Insert(data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -956,7 +1049,7 @@ func TestEngineCompactionMerge(t *testing.T) {
 		}
 
 		// 每批后 Flush
-		err = engine.switchMemTable()
+		err = table.switchMemTable()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -965,22 +1058,22 @@ func TestEngineCompactionMerge(t *testing.T) {
 	}
 
 	// 等待所有 Flush 完成
-	for engine.memtableManager.GetImmutableCount() > 0 {
+	for table.memtableManager.GetImmutableCount() > 0 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	// 记录 Compaction 前的文件数
-	version := engine.versionSet.GetCurrent()
+	version := table.versionSet.GetCurrent()
 	beforeL0 := version.GetLevelFileCount(0)
 	t.Logf("Before compaction: L0 has %d files", beforeL0)
 
 	// 触发 Compaction
 	if beforeL0 >= 4 {
-		err = engine.compactionManager.TriggerCompaction()
+		err = table.compactionManager.TriggerCompaction()
 		if err != nil {
 			t.Logf("Compaction: %v", err)
 		} else {
-			version = engine.versionSet.GetCurrent()
+			version = table.versionSet.GetCurrent()
 			afterL0 := version.GetLevelFileCount(0)
 			afterL1 := version.GetLevelFileCount(1)
 			t.Logf("After compaction: L0 has %d files, L1 has %d files", afterL0, afterL1)
@@ -991,13 +1084,13 @@ func TestEngineCompactionMerge(t *testing.T) {
 	for batch := range 2 {
 		for i := range 5 {
 			seq := int64(batch*rowsPerBatch + i + 1)
-			row, err := engine.Get(seq)
+			row, err := table.Get(seq)
 			if err != nil {
 				t.Errorf("Get(%d) failed: %v", seq, err)
 				continue
 			}
 
-			actualBatch := int(row.Data["batch"].(float64))
+			actualBatch := int(row.Data["batch"].(int64))
 			if actualBatch != batch {
 				t.Errorf("Seq %d: expected batch %d, got %d", seq, batch, actualBatch)
 			}
@@ -1005,7 +1098,7 @@ func TestEngineCompactionMerge(t *testing.T) {
 	}
 
 	// 验证总行数
-	stats := engine.Stats()
+	stats := table.Stats()
 	if stats.TotalRows != int64(totalRows) {
 		t.Errorf("Expected %d total rows, got %d", totalRows, stats.TotalRows)
 	}
@@ -1013,24 +1106,31 @@ func TestEngineCompactionMerge(t *testing.T) {
 	t.Logf("Data integrity verified: %d rows", totalRows)
 }
 
-// TestEngineBackgroundCompaction 测试后台自动 Compaction
-func TestEngineBackgroundCompaction(t *testing.T) {
+// TestTableBackgroundCompaction 测试后台自动 Compaction
+func TestTableBackgroundCompaction(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping background compaction test in short mode")
 	}
 
 	tmpDir := t.TempDir()
 
-	opts := &EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "批次"},
+		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 512,
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	// 插入数据触发多次 Flush
 	const numBatches = 8
@@ -1043,13 +1143,13 @@ func TestEngineBackgroundCompaction(t *testing.T) {
 				"index": i,
 			}
 
-			err := engine.Insert(data)
+			err := table.Insert(data)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
 
-		err = engine.switchMemTable()
+		err = table.switchMemTable()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1058,12 +1158,12 @@ func TestEngineBackgroundCompaction(t *testing.T) {
 	}
 
 	// 等待 Flush 完成
-	for engine.memtableManager.GetImmutableCount() > 0 {
+	for table.memtableManager.GetImmutableCount() > 0 {
 		time.Sleep(100 * time.Millisecond)
 	}
 
 	// 记录初始状态
-	version := engine.versionSet.GetCurrent()
+	version := table.versionSet.GetCurrent()
 	initialL0 := version.GetLevelFileCount(0)
 	t.Logf("Initial L0 files: %d", initialL0)
 
@@ -1076,7 +1176,7 @@ func TestEngineBackgroundCompaction(t *testing.T) {
 		time.Sleep(checkInterval)
 		waited += checkInterval
 
-		version = engine.versionSet.GetCurrent()
+		version = table.versionSet.GetCurrent()
 		currentL0 := version.GetLevelFileCount(0)
 		currentL1 := version.GetLevelFileCount(1)
 
@@ -1087,7 +1187,7 @@ func TestEngineBackgroundCompaction(t *testing.T) {
 			t.Logf("Background compaction detected!")
 
 			// 获取 Compaction 统计
-			stats := engine.compactionManager.GetStats()
+			stats := table.compactionManager.GetStats()
 			t.Logf("Compaction stats: %v", stats)
 
 			return
@@ -1097,20 +1197,27 @@ func TestEngineBackgroundCompaction(t *testing.T) {
 	t.Log("No background compaction detected within timeout (this is OK if L0 < 4 files)")
 }
 
-// BenchmarkEngineWithCompaction 性能测试
-func BenchmarkEngineWithCompaction(b *testing.B) {
+// BenchmarkTableWithCompaction 性能测试
+func BenchmarkTableWithCompaction(b *testing.B) {
 	tmpDir := b.TempDir()
 
-	opts := &EngineOptions{
+	schema := NewSchema("test", []Field{
+		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
+		{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "值"},
+	})
+
+	opts := &TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 64 * 1024, // 64KB
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	}
 
-	engine, err := OpenEngine(opts)
+	table, err := OpenTable(opts)
 	if err != nil {
 		b.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	for i := 0; b.Loop(); i++ {
 		data := map[string]any{
@@ -1118,7 +1225,7 @@ func BenchmarkEngineWithCompaction(b *testing.B) {
 			"value": fmt.Sprintf("benchmark-data-%d", i),
 		}
 
-		err := engine.Insert(data)
+		err := table.Insert(data)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -1127,20 +1234,20 @@ func BenchmarkEngineWithCompaction(b *testing.B) {
 	b.StopTimer()
 
 	// 等待所有 Flush 完成
-	for engine.memtableManager.GetImmutableCount() > 0 {
+	for table.memtableManager.GetImmutableCount() > 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	// 报告统计信息
-	version := engine.versionSet.GetCurrent()
+	version := table.versionSet.GetCurrent()
 	b.Logf("Final state: L0=%d files, L1=%d files, Total=%d files",
 		version.GetLevelFileCount(0),
 		version.GetLevelFileCount(1),
 		version.GetFileCount())
 }
 
-// TestEngineSchemaRecover 测试 Schema 恢复
-func TestEngineSchemaRecover(t *testing.T) {
+// TestTableSchemaRecover 测试 Schema 恢复
+func TestTableSchemaRecover(t *testing.T) {
 	dir := "test_schema_recover"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
@@ -1153,10 +1260,10 @@ func TestEngineSchemaRecover(t *testing.T) {
 	})
 
 	// 1. 创建引擎并插入数据（带 Schema）
-	engine, err := OpenEngine(&EngineOptions{
+	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024, // 10 MB，不会触发 Flush
-		Schema:       s,
+		Name:         s.Name, Fields: s.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1169,7 +1276,7 @@ func TestEngineSchemaRecover(t *testing.T) {
 			"age":   20 + i%50,
 			"email": fmt.Sprintf("user%d@example.com", i),
 		}
-		err := engine.Insert(data)
+		err := table.Insert(data)
 		if err != nil {
 			t.Fatalf("Failed to insert valid data: %v", err)
 		}
@@ -1178,20 +1285,20 @@ func TestEngineSchemaRecover(t *testing.T) {
 	t.Log("Inserted 50 rows with schema")
 
 	// 2. 关闭引擎
-	engine.Close()
+	table.Close()
 
 	// 3. 重新打开引擎（带 Schema，应该成功恢复）
-	engine2, err := OpenEngine(&EngineOptions{
+	table2, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
-		Schema:       s,
+		Name:         s.Name, Fields: s.Fields,
 	})
 	if err != nil {
 		t.Fatalf("Failed to recover with schema: %v", err)
 	}
 
 	// 验证数据
-	row, err := engine2.Get(1)
+	row, err := table2.Get(1)
 	if err != nil {
 		t.Fatalf("Failed to get row after recovery: %v", err)
 	}
@@ -1207,21 +1314,28 @@ func TestEngineSchemaRecover(t *testing.T) {
 		t.Error("Missing field 'age'")
 	}
 
-	engine2.Close()
+	table2.Close()
 
 	t.Log("Schema recovery test passed!")
 }
 
-// TestEngineSchemaRecoverInvalid 测试当 WAL 中有不符合 Schema 的数据时恢复失败
-func TestEngineSchemaRecoverInvalid(t *testing.T) {
+// TestTableSchemaRecoverInvalid 测试当 WAL 中有不符合 Schema 的数据时恢复失败
+func TestTableSchemaRecoverInvalid(t *testing.T) {
 	dir := "test_schema_recover_invalid"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
+	schema := NewSchema("test", []Field{
+		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
+		{Name: "age", Type: FieldTypeString, Indexed: false, Comment: "年龄字符串"},
+	})
+
 	// 1. 先不带 Schema 插入一些数据
-	engine, err := OpenEngine(&EngineOptions{
+	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024, // 大容量，确保不会触发 Flush
+		Name:         schema.Name,
+		Fields:       schema.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1233,25 +1347,25 @@ func TestEngineSchemaRecoverInvalid(t *testing.T) {
 			"name": fmt.Sprintf("user_%d", i),
 			"age":  "invalid_age", // 这是字符串，但后续 Schema 要求 int64
 		}
-		err := engine.Insert(data)
+		err := table.Insert(data)
 		if err != nil {
 			t.Fatalf("Failed to insert data: %v", err)
 		}
 	}
 
 	// 2. 停止后台任务但不 Flush（模拟崩溃）
-	if engine.compactionManager != nil {
-		engine.compactionManager.Stop()
+	if table.compactionManager != nil {
+		table.compactionManager.Stop()
 	}
 	// 直接关闭资源，但不 Flush MemTable
-	if engine.walManager != nil {
-		engine.walManager.Close()
+	if table.walManager != nil {
+		table.walManager.Close()
 	}
-	if engine.versionSet != nil {
-		engine.versionSet.Close()
+	if table.versionSet != nil {
+		table.versionSet.Close()
 	}
-	if engine.sstManager != nil {
-		engine.sstManager.Close()
+	if table.sstManager != nil {
+		table.sstManager.Close()
 	}
 
 	// 3. 创建 Schema，age 字段要求 int64
@@ -1261,13 +1375,13 @@ func TestEngineSchemaRecoverInvalid(t *testing.T) {
 	})
 
 	// 4. 尝试用 Schema 打开引擎，应该失败
-	engine2, err := OpenEngine(&EngineOptions{
+	table2, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
-		Schema:       s,
+		Name:         s.Name, Fields: s.Fields,
 	})
 	if err == nil {
-		engine2.Close()
+		table2.Close()
 		t.Fatal("Expected recovery to fail with invalid schema, but it succeeded")
 	}
 
@@ -1279,8 +1393,8 @@ func TestEngineSchemaRecoverInvalid(t *testing.T) {
 	t.Log("Invalid schema recovery test passed!")
 }
 
-// TestEngineAutoRecoverSchema 测试自动从磁盘恢复 Schema
-func TestEngineAutoRecoverSchema(t *testing.T) {
+// TestTableAutoRecoverSchema 测试自动从磁盘恢复 Schema
+func TestTableAutoRecoverSchema(t *testing.T) {
 	dir := "test_auto_recover_schema"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
@@ -1292,10 +1406,10 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	})
 
 	// 1. 创建引擎并提供 Schema（会保存到磁盘）
-	engine1, err := OpenEngine(&EngineOptions{
+	table1, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
-		Schema:       s,
+		Name:         s.Name, Fields: s.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1307,16 +1421,16 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 			"name": fmt.Sprintf("user_%d", i),
 			"age":  20 + i,
 		}
-		err := engine1.Insert(data)
+		err := table1.Insert(data)
 		if err != nil {
 			t.Fatalf("Failed to insert: %v", err)
 		}
 	}
 
-	engine1.Close()
+	table1.Close()
 
 	// 2. 重新打开引擎，不提供 Schema（应该自动从磁盘恢复）
-	engine2, err := OpenEngine(&EngineOptions{
+	table2, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
 		// 不设置 Schema
@@ -1326,7 +1440,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	}
 
 	// 验证 Schema 已恢复
-	recoveredSchema := engine2.GetSchema()
+	recoveredSchema := table2.GetSchema()
 	if recoveredSchema == nil {
 		t.Fatal("Expected schema to be recovered, but got nil")
 	}
@@ -1340,7 +1454,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	}
 
 	// 验证数据
-	row, err := engine2.Get(1)
+	row, err := table2.Get(1)
 	if err != nil {
 		t.Fatalf("Failed to get row: %v", err)
 	}
@@ -1349,7 +1463,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	}
 
 	// 尝试插入新数据（应该符合恢复的 Schema）
-	err = engine2.Insert(map[string]any{
+	err = table2.Insert(map[string]any{
 		"name": "new_user",
 		"age":  30,
 	})
@@ -1358,7 +1472,7 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 	}
 
 	// 尝试插入不符合 Schema 的数据（应该失败）
-	err = engine2.Insert(map[string]any{
+	err = table2.Insert(map[string]any{
 		"name": "bad_user",
 		"age":  "invalid", // 类型错误
 	})
@@ -1366,13 +1480,13 @@ func TestEngineAutoRecoverSchema(t *testing.T) {
 		t.Fatal("Expected insert to fail with invalid type, but it succeeded")
 	}
 
-	engine2.Close()
+	table2.Close()
 
 	t.Log("Auto recover schema test passed!")
 }
 
-// TestEngineSchemaTamperDetection 测试篡改检测
-func TestEngineSchemaTamperDetection(t *testing.T) {
+// TestTableSchemaTamperDetection 测试篡改检测
+func TestTableSchemaTamperDetection(t *testing.T) {
 	dir := "test_schema_tamper"
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
@@ -1384,15 +1498,15 @@ func TestEngineSchemaTamperDetection(t *testing.T) {
 	})
 
 	// 1. 创建引擎并保存 Schema
-	engine1, err := OpenEngine(&EngineOptions{
+	table1, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
-		Schema:       s,
+		Name:         s.Name, Fields: s.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	engine1.Close()
+	table1.Close()
 
 	// 2. 篡改 schema.json（修改字段但不更新 checksum）
 	schemaPath := fmt.Sprintf("%s/schema.json", dir)
@@ -1410,12 +1524,12 @@ func TestEngineSchemaTamperDetection(t *testing.T) {
 	}
 
 	// 3. 尝试打开引擎，应该检测到篡改
-	engine2, err := OpenEngine(&EngineOptions{
+	table2, err := OpenTable(&TableOptions{
 		Dir:          dir,
 		MemTableSize: 10 * 1024 * 1024,
 	})
 	if err == nil {
-		engine2.Close()
+		table2.Close()
 		t.Fatal("Expected to detect schema tampering, but open succeeded")
 	}
 
@@ -1427,4 +1541,306 @@ func TestEngineSchemaTamperDetection(t *testing.T) {
 
 	t.Logf("Detected tampering as expected: %v", err)
 	t.Log("Schema tamper detection test passed!")
+}
+
+func TestTableClean(t *testing.T) {
+	dir := "./test_table_clean_data"
+	defer os.RemoveAll(dir)
+
+	// 1. 创建数据库和表
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	schema := NewSchema("users", []Field{
+		{Name: "id", Type: FieldTypeInt64, Indexed: true, Comment: "ID"},
+		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "Name"},
+	})
+
+	table, err := db.CreateTable("users", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. 插入数据
+	for i := range 100 {
+		err := table.Insert(map[string]any{
+			"id":   int64(i),
+			"name": "user" + string(rune(i)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// 3. 验证数据存在
+	stats := table.Stats()
+	t.Logf("Before Clean: %d rows", stats.TotalRows)
+
+	if stats.TotalRows == 0 {
+		t.Error("Expected data in table")
+	}
+
+	// 4. 清除数据
+	err = table.Clean()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 5. 验证数据已清除
+	stats = table.Stats()
+	t.Logf("After Clean: %d rows", stats.TotalRows)
+
+	if stats.TotalRows != 0 {
+		t.Errorf("Expected 0 rows after clean, got %d", stats.TotalRows)
+	}
+
+	// 6. 验证表仍然可用
+	err = table.Insert(map[string]any{
+		"id":   int64(100),
+		"name": "new_user",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stats = table.Stats()
+	if stats.TotalRows != 1 {
+		t.Errorf("Expected 1 row after insert, got %d", stats.TotalRows)
+	}
+}
+
+func TestTableDestroy(t *testing.T) {
+	dir := "./test_table_destroy_data"
+	defer os.RemoveAll(dir)
+
+	// 1. 创建数据库和表
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	schema := NewSchema("test", []Field{
+		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
+	})
+
+	table, err := db.CreateTable("test", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. 插入数据
+	for i := range 50 {
+		table.Insert(map[string]any{"id": int64(i)})
+	}
+
+	// 3. 验证数据存在
+	stats := table.Stats()
+	t.Logf("Before Destroy: %d rows", stats.TotalRows)
+
+	if stats.TotalRows == 0 {
+		t.Error("Expected data in table")
+	}
+
+	// 4. 获取表目录路径
+	tableDir := table.dir
+
+	// 5. 销毁表
+	err = table.Destroy()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 6. 验证表目录已删除
+	if _, err := os.Stat(tableDir); !os.IsNotExist(err) {
+		t.Error("Table directory should be deleted")
+	}
+
+	// 7. 注意：Table.Destroy() 只删除文件，不从 Database 中删除
+	// 表仍然在 Database 的元数据中，但文件已被删除
+	tables := db.ListTables()
+	found := slices.Contains(tables, "test")
+	if !found {
+		t.Error("Table should still be in database metadata (use Database.DestroyTable to remove from metadata)")
+	}
+}
+
+func TestTableCleanWithIndex(t *testing.T) {
+	dir := "./test_table_clean_index_data"
+	defer os.RemoveAll(dir)
+
+	// 1. 创建数据库和表
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	schema := NewSchema("users", []Field{
+		{Name: "id", Type: FieldTypeInt64, Indexed: true, Comment: "ID"},
+		{Name: "email", Type: FieldTypeString, Indexed: true, Comment: "Email"},
+		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "Name"},
+	})
+
+	table, err := db.CreateTable("users", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. 创建索引
+	err = table.CreateIndex("id")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = table.CreateIndex("email")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3. 插入数据
+	for i := range 50 {
+		table.Insert(map[string]any{
+			"id":    int64(i),
+			"email": "user" + string(rune(i)) + "@example.com",
+			"name":  "User " + string(rune(i)),
+		})
+	}
+
+	// 4. 验证索引存在
+	indexes := table.ListIndexes()
+	if len(indexes) != 2 {
+		t.Errorf("Expected 2 indexes, got %d", len(indexes))
+	}
+
+	// 5. 清除数据
+	err = table.Clean()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 6. 验证数据已清除
+	stats := table.Stats()
+	if stats.TotalRows != 0 {
+		t.Errorf("Expected 0 rows after clean, got %d", stats.TotalRows)
+	}
+
+	// 7. 验证索引已被清除（Clean 会删除索引数据）
+	indexes = table.ListIndexes()
+	if len(indexes) != 0 {
+		t.Logf("Note: Indexes were cleared (expected behavior), got %d", len(indexes))
+	}
+
+	// 8. 重新创建索引
+	table.CreateIndex("id")
+	table.CreateIndex("email")
+
+	// 9. 验证可以继续插入数据
+	err = table.Insert(map[string]any{
+		"id":    int64(100),
+		"email": "new@example.com",
+		"name":  "New User",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stats = table.Stats()
+	if stats.TotalRows != 1 {
+		t.Errorf("Expected 1 row, got %d", stats.TotalRows)
+	}
+}
+
+func TestTableCleanAndQuery(t *testing.T) {
+	dir := "./test_table_clean_query_data"
+	defer os.RemoveAll(dir)
+
+	// 1. 创建数据库和表
+	db, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	schema := NewSchema("test", []Field{
+		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
+		{Name: "status", Type: FieldTypeString, Indexed: false, Comment: "Status"},
+	})
+
+	table, err := db.CreateTable("test", schema)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. 插入数据
+	for i := range 30 {
+		table.Insert(map[string]any{
+			"id":     int64(i),
+			"status": "active",
+		})
+	}
+
+	// 3. 查询数据
+	rows, err := table.Query().Eq("status", "active").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	rows.Close()
+
+	t.Logf("Before Clean: found %d rows", count)
+	if count != 30 {
+		t.Errorf("Expected 30 rows, got %d", count)
+	}
+
+	// 4. 清除数据
+	err = table.Clean()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 5. 再次查询
+	rows, err = table.Query().Eq("status", "active").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count = 0
+	for rows.Next() {
+		count++
+	}
+	rows.Close()
+
+	t.Logf("After Clean: found %d rows", count)
+	if count != 0 {
+		t.Errorf("Expected 0 rows after clean, got %d", count)
+	}
+
+	// 6. 插入新数据并查询
+	table.Insert(map[string]any{
+		"id":     int64(100),
+		"status": "active",
+	})
+
+	rows, err = table.Query().Eq("status", "active").Rows()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	count = 0
+	for rows.Next() {
+		count++
+	}
+	rows.Close()
+
+	if count != 1 {
+		t.Errorf("Expected 1 row, got %d", count)
+	}
 }

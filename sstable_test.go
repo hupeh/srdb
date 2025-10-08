@@ -15,8 +15,14 @@ func TestSSTable(t *testing.T) {
 	}
 	defer os.Remove("test.sst")
 
+	// 创建 Schema
+	schema := NewSchema("test", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+	})
+
 	// 2. 写入数据
-	writer := NewSSTableWriter(file, nil)
+	writer := NewSSTableWriter(file, schema)
 
 	// 添加 1000 行数据
 	for i := int64(1); i <= 1000; i++ {
@@ -50,6 +56,9 @@ func TestSSTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reader.Close()
+
+	// 设置 Schema
+	reader.SetSchema(schema)
 
 	// 验证 Header
 	header := reader.GetHeader()
@@ -100,7 +109,7 @@ func TestSSTableHeaderSerialization(t *testing.T) {
 	header := &SSTableHeader{
 		Magic:       SSTableMagicNumber,
 		Version:     SSTableVersion,
-		Compression: SSTableCompressionSnappy,
+		Compression: 0, // 不使用压缩
 		IndexOffset: 256,
 		IndexSize:   1024,
 		RootOffset:  512,
@@ -154,11 +163,16 @@ func TestSSTableHeaderSerialization(t *testing.T) {
 }
 
 func BenchmarkSSTableGet(b *testing.B) {
+	// 创建 Schema
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeInt64},
+	})
+
 	// 创建测试文件
 	file, _ := os.Create("bench.sst")
 	defer os.Remove("bench.sst")
 
-	writer := NewSSTableWriter(file, nil)
+	writer := NewSSTableWriter(file, schema)
 	for i := int64(1); i <= 10000; i++ {
 		row := &SSTableRow{
 			Seq:  i,
@@ -175,6 +189,9 @@ func BenchmarkSSTableGet(b *testing.B) {
 	// 打开读取器
 	reader, _ := NewSSTableReader("bench.sst")
 	defer reader.Close()
+
+	// 设置 Schema
+	reader.SetSchema(schema)
 
 	// 性能测试
 

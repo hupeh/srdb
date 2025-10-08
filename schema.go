@@ -63,7 +63,7 @@ func (s *Schema) GetField(name string) (*Field, error) {
 			return &s.Fields[i], nil
 		}
 	}
-	return nil, fmt.Errorf("field %s not found", name)
+	return nil, NewErrorf(ErrCodeFieldNotFound, "field %s not found", name)
 }
 
 // GetIndexedFields 获取所有需要索引的字段
@@ -140,7 +140,7 @@ func (s *Schema) ExtractIndexValue(field string, data map[string]any) (any, erro
 
 	value, exists := data[field]
 	if !exists {
-		return nil, fmt.Errorf("field %s not found in data", field)
+		return nil, NewErrorf(ErrCodeFieldNotFound, "field %s not found in data", field)
 	}
 
 	// 类型转换

@@ -87,9 +87,15 @@ func TestBTree(t *testing.T) {
 func TestBTreeSerialization(t *testing.T) {
 	// 测试节点序列化
 	leaf := NewLeafNode()
-	leaf.AddData(1, 1000, 100)
-	leaf.AddData(2, 2000, 200)
-	leaf.AddData(3, 3000, 300)
+	if err := leaf.AddData(1, 1000, 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := leaf.AddData(2, 2000, 200); err != nil {
+		t.Fatal(err)
+	}
+	if err := leaf.AddData(3, 3000, 300); err != nil {
+		t.Fatal(err)
+	}
 
 	// 序列化
 	data := leaf.Marshal()

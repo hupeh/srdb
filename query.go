@@ -31,18 +31,13 @@ func (m *mapFieldset) Get(key string) (Field, any, error) {
 		return Field{}, nil, fmt.Errorf("field %s not found", key)
 	}
 
-	// 如果有 schema，返回字段定义
-	if m.schema != nil {
-		field, err := m.schema.GetField(key)
-		if err != nil {
-			// 字段在 schema 中不存在，返回默认 Field
-			return Field{Name: key}, value, nil
-		}
-		return *field, value, nil
+	// 从 Schema 获取字段定义
+	field, err := m.schema.GetField(key)
+	if err != nil {
+		// 字段在 schema 中不存在，返回默认 Field
+		return Field{Name: key}, value, nil
 	}
-
-	// 没有 schema，返回默认 Field
-	return Field{Name: key}, value, nil
+	return *field, value, nil
 }
 
 type Expr interface {
@@ -364,12 +359,12 @@ func Or(exprs ...Expr) Expr {
 type QueryBuilder struct {
 	conds  []Expr
 	fields []string // 要选择的字段，nil 表示选择所有字段
-	engine *Engine
+	table  *Table
 }
 
-func newQueryBuilder(engine *Engine) *QueryBuilder {
+func newQueryBuilder(table *Table) *QueryBuilder {
 	return &QueryBuilder{
-		engine: engine,
+		table: table,
 	}
 }
 
@@ -384,7 +379,7 @@ func (qb *QueryBuilder) Match(data map[string]any) bool {
 		return true
 	}
 
-	fs := newMapFieldset(data, qb.engine.schema)
+	fs := newMapFieldset(data, qb.table.schema)
 	for _, cond := range qb.conds {
 		if !cond.Match(fs) {
 			return false
@@ -477,15 +472,15 @@ func (qb *QueryBuilder) NotNull(field string) *QueryBuilder {
 
 // Rows 返回所有匹配的数据（游标模式 - 惰性加载）
 func (qb *QueryBuilder) Rows() (*Rows, error) {
-	if qb.engine == nil {
-		return nil, fmt.Errorf("engine is nil")
+	if qb.table == nil {
+		return nil, fmt.Errorf("table is nil")
 	}
 
 	rows := &Rows{
-		schema:  qb.engine.schema,
+		schema:  qb.table.schema,
 		fields:  qb.fields,
 		qb:      qb,
-		engine:  qb.engine,
+		table:   qb.table,
 		visited: make(map[int64]bool),
 	}
 
@@ -495,7 +490,7 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 	var allKeys []int64
 
 	// 1. 从 Active MemTable 读取数据
-	activeMemTable := qb.engine.memtableManager.GetActive()
+	activeMemTable := qb.table.memtableManager.GetActive()
 	if activeMemTable != nil {
 		activeKeys := activeMemTable.Keys()
 		for _, key := range activeKeys {
@@ -510,7 +505,7 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 	}
 
 	// 2. 从所有 Immutable MemTables 读取数据
-	immutables := qb.engine.memtableManager.GetImmutables()
+	immutables := qb.table.memtableManager.GetImmutables()
 	for _, imm := range immutables {
 		immKeys := imm.MemTable.Keys()
 		for _, key := range immKeys {
@@ -530,13 +525,13 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 	}
 
 	// 3. 收集所有 SST 文件的 keys
-	sstReaders := qb.engine.sstManager.GetReaders()
+	sstReaders := qb.table.sstManager.GetReaders()
 
 	for _, reader := range sstReaders {
 		// 获取文件中实际存在的 key 列表（已在 GetAllKeys 中排序）
 		keys := reader.GetAllKeys()
 
-		// 记录所有 keys（实际数据稍后统一从 engine 读取）
+		// 记录所有 keys（实际数据稍后统一从 table 读取）
 		for _, key := range keys {
 			// 如果 key 已存在（来自更新的数据源），跳过
 			if _, exists := keyToRow[key]; !exists {
@@ -561,15 +556,15 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 		// 排序
 		slices.Sort(uniqueKeys)
 
-		// 统一从 engine 读取所有数据（避免 compaction 导致的文件删除）
+		// 统一从 table 读取所有数据（避免 compaction 导致的文件删除）
 		rows.cachedRows = make([]*SSTableRow, 0, len(uniqueKeys))
 		for _, seq := range uniqueKeys {
 			// 如果已经从 MemTable 读取，直接使用
 			row := keyToRow[seq]
 			if row == nil {
-				// 从 engine 读取（会搜索 MemTable + 所有 SST，包括 compaction 后的新文件）
+				// 从 table 读取（会搜索 MemTable + 所有 SST，包括 compaction 后的新文件）
 				var err error
-				row, err = qb.engine.Get(seq)
+				row, err = qb.table.Get(seq)
 				if err != nil {
 					// 数据不存在（理论上不应该发生，因为 key 来自索引）
 					continue
@@ -689,7 +684,7 @@ type Rows struct {
 	schema *Schema
 	fields []string // 要选择的字段，nil 表示选择所有字段
 	qb     *QueryBuilder
-	engine *Engine
+	table  *Table
 
 	// 迭代状态
 	currentRow *Row
@@ -762,7 +757,7 @@ func (r *Rows) next() bool {
 		if r.memIterator != nil {
 			if seq, ok := r.memIterator.next(); ok {
 				if !r.visited[seq] {
-					row, err := r.engine.Get(seq)
+					row, err := r.table.Get(seq)
 					if err == nil && r.qb.Match(row.Data) {
 						r.visited[seq] = true
 						r.currentRow = &Row{schema: r.schema, fields: r.fields, inner: row}
@@ -780,7 +775,7 @@ func (r *Rows) next() bool {
 		if r.immutableIterator != nil {
 			if seq, ok := r.immutableIterator.next(); ok {
 				if !r.visited[seq] {
-					row, err := r.engine.Get(seq)
+					row, err := r.table.Get(seq)
 					if err == nil && r.qb.Match(row.Data) {
 						r.visited[seq] = true
 						r.currentRow = &Row{schema: r.schema, fields: r.fields, inner: row}
@@ -796,8 +791,8 @@ func (r *Rows) next() bool {
 		}
 
 		// 检查是否有更多 Immutable MemTables
-		if r.immutableIterator == nil && r.immutableIndex < len(r.engine.memtableManager.GetImmutables()) {
-			immutables := r.engine.memtableManager.GetImmutables()
+		if r.immutableIterator == nil && r.immutableIndex < len(r.table.memtableManager.GetImmutables()) {
+			immutables := r.table.memtableManager.GetImmutables()
 			if r.immutableIndex < len(immutables) {
 				r.immutableIterator = newMemtableIterator(immutables[r.immutableIndex].MemTable.Keys())
 				continue
@@ -813,7 +808,7 @@ func (r *Rows) next() bool {
 				sstReader.index++
 
 				if !r.visited[seq] {
-					row, err := r.engine.Get(seq)
+					row, err := r.table.Get(seq)
 					if err == nil && r.qb.Match(row.Data) {
 						r.visited[seq] = true
 						r.currentRow = &Row{schema: r.schema, fields: r.fields, inner: row}

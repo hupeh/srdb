@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"code.tczkiot.com/srdb"
+	"code.tczkiot.com/wlw/srdb"
 )
 
 // TestKeys 测试键

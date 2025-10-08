@@ -2,12 +2,95 @@ package srdb
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"slices"
 	"sort"
 
 	"github.com/edsrzf/mmap-go"
 )
+
+/*
+B+Tree 存储格式
+
+B+Tree 用于索引 SSTable 和 Index 文件，提供 O(log n) 查询性能。
+
+节点结构 (4096 bytes):
+┌─────────────────────────────────────────────────────────────┐
+│ Node Header (32 bytes)                                      │
+│   ├─ NodeType (1 byte): 0=Internal, 1=Leaf                 │
+│   ├─ KeyCount (2 bytes): 节点中的 key 数量                  │
+│   ├─ Level (1 byte): 层级 (0=叶子层)                        │
+│   └─ Reserved (28 bytes): 预留空间                          │
+├─────────────────────────────────────────────────────────────┤
+│ Keys Array (variable)                                       │
+│   └─ Key[0..KeyCount-1]: int64 (8 bytes each)              │
+├─────────────────────────────────────────────────────────────┤
+│ Values (variable, 取决于节点类型)                            │
+│                                                              │
+│ 内部节点 (Internal Node):                                   │
+│   └─ Children[0..KeyCount]: int64 (8 bytes each)           │
+│       - 子节点的文件偏移量                                   │
+│       - Children[i] 包含 < Key[i] 的所有 key                │
+│       - Children[KeyCount] 包含 >= Key[KeyCount-1] 的 key  │
+│                                                              │
+│ 叶子节点 (Leaf Node):                                        │
+│   └─ Data Pairs[0..KeyCount-1]: 交错存储 (12 bytes each)   │
+│       ├─ DataOffset: int64 (8 bytes) - 数据块的文件偏移量   │
+│       └─ DataSize: int32 (4 bytes) - 数据块的大小           │
+└─────────────────────────────────────────────────────────────┘
+
+节点头格式 (32 bytes):
+  Offset | Size | Field      | Description
+  -------|------|------------|----------------------------------
+  0      | 1    | NodeType   | 0=Internal, 1=Leaf
+  1      | 2    | KeyCount   | key 数量 (0 ~ BTreeOrder)
+  3      | 1    | Level      | 层级 (0=叶子层, 1+=内部层)
+  4      | 28   | Reserved   | 预留空间
+
+内部节点布局 (示例: KeyCount=3):
+  [Header: 32B]
+  [Keys: Key0(8B), Key1(8B), Key2(8B)]
+  [Children: Child0(8B), Child1(8B), Child2(8B), Child3(8B)]
+  
+  查询规则:
+    - key < Key0  → Child0
+    - Key0 ≤ key < Key1 → Child1
+    - Key1 ≤ key < Key2 → Child2
+    - key ≥ Key2  → Child3
+
+叶子节点布局 (示例: KeyCount=3):
+  [Header: 32B]
+  [Keys: Key0(8B), Key1(8B), Key2(8B)]
+  [Data: (Offset0, Size0), (Offset1, Size1), (Offset2, Size2)]
+    - 交错存储: Offset0(8B), Size0(4B), Offset1(8B), Size1(4B), Offset2(8B), Size2(4B)
+
+  查询规则:
+    - 找到 key == Key[i]
+    - 返回 (DataOffsets[i], DataSizes[i])
+
+B+Tree 特性:
+  - 阶数 (Order): 200 (每个节点最多 200 个 key)
+  - 节点大小: 4096 bytes (4 KB，对齐页大小)
+  - 高度: log₂₀₀(N) (100万条数据约 3 层)
+  - 查询复杂度: O(log n)
+  - 范围查询: 支持（叶子节点有序）
+
+文件布局示例:
+  SSTable/Index 文件:
+    [Header: 256B]
+    [B+Tree Nodes: 4KB each]
+      ├─ Root Node (Internal)
+      ├─ Level 1 Nodes (Internal)
+      └─ Leaf Nodes
+    [Data Blocks: variable]
+
+性能优化:
+  - mmap 零拷贝: 直接从内存映射读取节点
+  - 节点对齐: 4KB 对齐，利用操作系统页缓存
+  - 有序存储: 叶子节点有序，支持范围查询
+  - 紧凑编码: 最小化节点大小，提高缓存命中率
+*/
 
 const (
 	BTreeNodeSize         = 4096 // 节点大小 (4 KB)
@@ -59,6 +142,29 @@ func NewLeafNode() *BTreeNode {
 }
 
 // Marshal 序列化节点到 4 KB
+//
+// 布局：
+//   [Header: 32B]
+//   [Keys: KeyCount * 8B]
+//   [Values: 取决于节点类型]
+//     - Internal: Children (KeyCount+1) * 8B
+//     - Leaf: 交错存储 (Offset, Size) 对，每对 12B，共 KeyCount * 12B
+//
+// 示例（叶子节点，KeyCount=3）：
+//   Offset | Size | Content
+//   -------|------|----------------------------------
+//   0      | 1    | NodeType = 1 (Leaf)
+//   1      | 2    | KeyCount = 3
+//   3      | 1    | Level = 0
+//   4      | 28   | Reserved
+//   32     | 24   | Keys [100, 200, 300]
+//   56     | 8    | DataOffset0 = 1000
+//   64     | 4    | DataSize0 = 50
+//   68     | 8    | DataOffset1 = 2000
+//   76     | 4    | DataSize1 = 60
+//   80     | 8    | DataOffset2 = 3000
+//   88     | 4    | DataSize2 = 70
+//   92     | 4004 | Padding (unused)
 func (n *BTreeNode) Marshal() []byte {
 	buf := make([]byte, BTreeNodeSize)
 
@@ -105,6 +211,16 @@ func (n *BTreeNode) Marshal() []byte {
 }
 
 // UnmarshalBTree 从字节数组反序列化节点
+//
+// 参数：
+//   data: 4KB 节点数据（通常来自 mmap）
+//
+// 返回：
+//   *BTreeNode: 反序列化后的节点
+//
+// 零拷贝优化：
+//   - 直接从 mmap 数据读取，不复制整个节点
+//   - 只复制必要的字段（Keys, Children, DataOffsets, DataSizes）
 func UnmarshalBTree(data []byte) *BTreeNode {
 	if len(data) < BTreeNodeSize {
 		return nil
@@ -171,25 +287,47 @@ func (n *BTreeNode) AddKey(key int64) {
 }
 
 // AddChild 添加子节点 (仅用于内部节点)
-func (n *BTreeNode) AddChild(offset int64) {
+func (n *BTreeNode) AddChild(offset int64) error {
 	if n.NodeType != BTreeNodeTypeInternal {
-		panic("AddChild called on leaf node")
+		return fmt.Errorf("AddChild called on leaf node")
 	}
 	n.Children = append(n.Children, offset)
+	return nil
 }
 
 // AddData 添加数据位置 (仅用于叶子节点)
-func (n *BTreeNode) AddData(key int64, offset int64, size int32) {
+func (n *BTreeNode) AddData(key int64, offset int64, size int32) error {
 	if n.NodeType != BTreeNodeTypeLeaf {
-		panic("AddData called on internal node")
+		return fmt.Errorf("AddData called on internal node")
 	}
 	n.Keys = append(n.Keys, key)
 	n.DataOffsets = append(n.DataOffsets, offset)
 	n.DataSizes = append(n.DataSizes, size)
 	n.KeyCount = uint16(len(n.Keys))
+	return nil
 }
 
 // BTreeBuilder 从下往上构建 B+Tree
+//
+// 构建流程：
+//   1. Add(): 添加所有 (key, offset, size) 到叶子节点
+//      - 当叶子节点满时，创建新的叶子节点
+//      - 所有叶子节点按 key 有序
+//
+//   2. Build(): 从叶子层向上构建
+//      - Level 0: 叶子节点（已创建）
+//      - Level 1: 为叶子节点创建父节点（内部节点）
+//      - Level 2+: 递归创建更高层级
+//      - 最终返回根节点偏移量
+//
+// 示例（100 个 key，Order=200）：
+//   - 叶子层: 1 个叶子节点（100 个 key）
+//   - 根节点: 叶子节点本身
+//
+// 示例（500 个 key，Order=200）：
+//   - 叶子层: 3 个叶子节点（200, 200, 100 个 key）
+//   - Level 1: 1 个内部节点（3 个子节点）
+//   - 根节点: Level 1 的内部节点
 type BTreeBuilder struct {
 	order     int          // B+Tree 阶数
 	file      *os.File     // 输出文件
@@ -220,7 +358,9 @@ func (b *BTreeBuilder) Add(key int64, dataOffset int64, dataSize int32) error {
 	}
 
 	// 添加到叶子节点
-	leaf.AddData(key, dataOffset, dataSize)
+	if err := leaf.AddData(key, dataOffset, dataSize); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -280,14 +420,18 @@ func (b *BTreeBuilder) buildLevel(children []*BTreeNode, childOffsets []int64, l
 		parent := NewInternalNode(byte(level))
 
 		// 添加第一个子节点 (没有对应的 key)
-		parent.AddChild(childOffsets[i])
+		if err := parent.AddChild(childOffsets[i]); err != nil {
+			return nil, nil, err
+		}
 
 		// 添加剩余的子节点和分隔 key
 		for j := i + 1; j < end; j++ {
 			// 分隔 key 是子节点的第一个 key
 			separatorKey := children[j].Keys[0]
 			parent.AddKey(separatorKey)
-			parent.AddChild(childOffsets[j])
+			if err := parent.AddChild(childOffsets[j]); err != nil {
+				return nil, nil, err
+			}
 		}
 
 		// 写入父节点
@@ -307,6 +451,24 @@ func (b *BTreeBuilder) buildLevel(children []*BTreeNode, childOffsets []int64, l
 }
 
 // BTreeReader 用于查询 B+Tree (mmap)
+//
+// 查询流程：
+//   1. 从根节点开始
+//   2. 如果是内部节点：
+//      - 二分查找确定子节点
+//      - 跳转到子节点继续查找
+//   3. 如果是叶子节点：
+//      - 二分查找 key
+//      - 返回 (dataOffset, dataSize)
+//
+// 性能优化：
+//   - mmap 零拷贝：直接从内存映射读取节点
+//   - 二分查找：O(log KeyCount) 在节点内查找
+//   - 总复杂度：O(log n) = O(height * log Order)
+//
+// 示例（100万条数据，Order=200）：
+//   - 高度: log₂₀₀(1000000) ≈ 3
+//   - 查询次数: 3 次节点读取 + 3 次二分查找
 type BTreeReader struct {
 	mmap       mmap.MMap
 	rootOffset int64
@@ -321,6 +483,19 @@ func NewBTreeReader(mmap mmap.MMap, rootOffset int64) *BTreeReader {
 }
 
 // Get 查询 key，返回数据位置
+//
+// 参数：
+//   key: 要查询的 key
+//
+// 返回：
+//   dataOffset: 数据块的文件偏移量
+//   dataSize: 数据块的大小
+//   found: 是否找到
+//
+// 查询流程：
+//   1. 从根节点开始遍历
+//   2. 内部节点：二分查找确定子节点，跳转
+//   3. 叶子节点：二分查找 key，返回数据位置
 func (r *BTreeReader) Get(key int64) (dataOffset int64, dataSize int32, found bool) {
 	if r.rootOffset == 0 {
 		return 0, 0, false

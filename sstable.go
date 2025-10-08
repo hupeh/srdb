@@ -3,7 +3,6 @@ package srdb
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,7 +11,6 @@ import (
 	"sync"
 
 	"github.com/edsrzf/mmap-go"
-	"github.com/golang/snappy"
 )
 
 const (
@@ -22,13 +20,9 @@ const (
 	SSTableHeaderSize  = 256       // 文件头大小
 	SSTableBlockSize   = 64 * 1024 // 数据块大小 (64 KB)
 
-	// 压缩类型
-	SSTableCompressionNone   = 0
-	SSTableCompressionSnappy = 1
-
 	// 二进制编码格式:
 	// [Magic: 4 bytes][Seq: 8 bytes][Time: 8 bytes][DataLen: 4 bytes][Data: variable]
-	SSTableRowMagic = 0x524F5733 // "ROW3"
+	SSTableRowMagic = 0x524F5731 // "ROW1"
 )
 
 // SSTableHeader SST 文件头 (256 bytes)
@@ -36,7 +30,7 @@ type SSTableHeader struct {
 	// 基础信息 (32 bytes)
 	Magic       uint32 // Magic Number: 0x53535433
 	Version     uint32 // 版本号
-	Compression uint8  // 压缩类型
+	Compression uint8  // 压缩类型（保留字段用于向后兼容）
 	Reserved1   [3]byte
 	Flags       uint32 // 标志位
 	Reserved2   [16]byte
@@ -175,14 +169,9 @@ func encodeSSTableRowBinary(row *SSTableRow, schema *Schema) ([]byte, error) {
 		return nil, err
 	}
 
-	// 如果没有 Schema，回退到 JSON 编码（只编码 Data 部分，Seq/Time 已经写入）
+	// 强制要求 Schema
 	if schema == nil {
-		dataJSON, err := json.Marshal(row.Data)
-		if err != nil {
-			return nil, err
-		}
-		buf.Write(dataJSON)
-		return buf.Bytes(), nil
+		return nil, fmt.Errorf("schema is required for encoding SSTable rows")
 	}
 
 	// 按字段分别编码和压缩
@@ -191,8 +180,8 @@ func encodeSSTableRowBinary(row *SSTableRow, schema *Schema) ([]byte, error) {
 		return nil, err
 	}
 
-	// 1. 先编码所有字段到各自的 buffer
-	compressedFields := make([][]byte, len(schema.Fields))
+	// 1. 先编码所有字段到各自的 buffer（无压缩）
+	fieldData := make([][]byte, len(schema.Fields))
 
 	for i, field := range schema.Fields {
 		fieldBuf := new(bytes.Buffer)
@@ -209,28 +198,28 @@ func encodeSSTableRowBinary(row *SSTableRow, schema *Schema) ([]byte, error) {
 			}
 		}
 
-		// 压缩每个字段
-		compressedFields[i] = snappy.Encode(nil, fieldBuf.Bytes())
+		// 直接使用二进制数据（无压缩）
+		fieldData[i] = fieldBuf.Bytes()
 	}
 
 	// 2. 写入字段偏移表（相对于数据区起始位置）
 	currentOffset := 0
 
-	for _, compressed := range compressedFields {
+	for _, data := range fieldData {
 		// 写入字段偏移（相对于数据区）
 		if err := binary.Write(buf, binary.LittleEndian, uint32(currentOffset)); err != nil {
 			return nil, err
 		}
-		// 写入压缩后大小
-		if err := binary.Write(buf, binary.LittleEndian, uint32(len(compressed))); err != nil {
+		// 写入数据大小
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
 			return nil, err
 		}
-		currentOffset += len(compressed)
+		currentOffset += len(data)
 	}
 
-	// 3. 写入压缩后的字段数据
-	for _, compressed := range compressedFields {
-		if _, err := buf.Write(compressed); err != nil {
+	// 3. 写入字段数据
+	for _, data := range fieldData {
+		if _, err := buf.Write(data); err != nil {
 			return nil, err
 		}
 	}
@@ -341,14 +330,9 @@ func decodeSSTableRowBinaryPartial(data []byte, schema *Schema, fields []string)
 		return nil, err
 	}
 
-	// 如果没有 Schema，回退到 JSON 解码（读取剩余的 JSON 数据）
+	// 强制要求 Schema
 	if schema == nil {
-		remainingData := data[16:] // Skip Seq (8 bytes) + Time (8 bytes)
-		row.Data = make(map[string]any)
-		if err := json.Unmarshal(remainingData, &row.Data); err != nil {
-			return nil, err
-		}
-		return row, nil
+		return nil, fmt.Errorf("schema is required for decoding SSTable rows")
 	}
 
 	// 读取字段数量
@@ -400,28 +384,22 @@ func decodeSSTableRowBinaryPartial(data []byte, schema *Schema, fields []string)
 			continue
 		}
 
-		// 读取压缩的字段数据
+		// 读取字段数据（无压缩）
 		info := fieldInfos[i]
-		compressedPos := dataStart + int64(info.offset)
+		fieldPos := dataStart + int64(info.offset)
 
 		// Seek 到字段位置
-		if _, err := buf.Seek(compressedPos, 0); err != nil {
+		if _, err := buf.Seek(fieldPos, 0); err != nil {
 			return nil, fmt.Errorf("seek to field %s: %w", field.Name, err)
 		}
 
-		compressedData := make([]byte, info.size)
-		if _, err := buf.Read(compressedData); err != nil {
+		fieldData := make([]byte, info.size)
+		if _, err := buf.Read(fieldData); err != nil {
 			return nil, fmt.Errorf("read field %s: %w", field.Name, err)
 		}
 
-		// 解压字段数据
-		decompressed, err := snappy.Decode(nil, compressedData)
-		if err != nil {
-			return nil, fmt.Errorf("decompress field %s: %w", field.Name, err)
-		}
-
-		// 解析字段值
-		fieldBuf := bytes.NewReader(decompressed)
+		// 解析字段值（直接从二进制数据）
+		fieldBuf := bytes.NewReader(fieldData)
 		value, err := readFieldBinaryValue(fieldBuf, field.Type, true)
 		if err != nil {
 			return nil, fmt.Errorf("parse field %s: %w", field.Name, err)
@@ -489,31 +467,29 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 
 // SSTableWriter SST 文件写入器
 type SSTableWriter struct {
-	file        *os.File
-	builder     *BTreeBuilder
-	dataOffset  int64
-	dataStart   int64 // 数据起始位置
-	rowCount    int64
-	minKey      int64
-	maxKey      int64
-	minTime     int64
-	maxTime     int64
-	compression uint8
-	schema      *Schema // Schema 用于优化编码
+	file       *os.File
+	builder    *BTreeBuilder
+	dataOffset int64
+	dataStart  int64 // 数据起始位置
+	rowCount   int64
+	minKey     int64
+	maxKey     int64
+	minTime    int64
+	maxTime    int64
+	schema     *Schema // Schema 用于优化编码
 }
 
 // NewSSTableWriter 创建 SST 写入器
 func NewSSTableWriter(file *os.File, schema *Schema) *SSTableWriter {
 	return &SSTableWriter{
-		file:        file,
-		builder:     NewBTreeBuilder(file, SSTableHeaderSize),
-		dataOffset:  0, // 先写数据，后面会更新
-		compression: SSTableCompressionSnappy,
-		minKey:      -1,
-		maxKey:      -1,
-		minTime:     -1,
-		maxTime:     -1,
-		schema:      schema,
+		file:       file,
+		builder:    NewBTreeBuilder(file, SSTableHeaderSize),
+		dataOffset: 0, // 先写数据，后面会更新
+		minKey:     -1,
+		maxKey:     -1,
+		minTime:    -1,
+		maxTime:    -1,
+		schema:     schema,
 	}
 }
 
@@ -541,18 +517,13 @@ func (w *SSTableWriter) Add(row *SSTableRow) error {
 	}
 	w.rowCount++
 
-	// 序列化数据（使用 Schema 优化的二进制格式）
-	data := encodeSSTableRow(row, w.schema)
-
-	// 压缩数据
-	var compressed []byte
-	if w.compression == SSTableCompressionSnappy {
-		compressed = snappy.Encode(nil, data)
-	} else {
-		compressed = data
+	// 序列化数据（使用 Schema 优化的二进制格式，无压缩）
+	data, err := encodeSSTableRow(row, w.schema)
+	if err != nil {
+		return fmt.Errorf("encode row: %w", err)
 	}
 
-	// 写入数据块
+	// 写入数据块（不压缩）
 	// 第一次写入时，确定数据起始位置
 	if w.dataStart == 0 {
 		// 预留足够空间给 B+Tree 索引
@@ -563,19 +534,19 @@ func (w *SSTableWriter) Add(row *SSTableRow) error {
 	}
 
 	offset := w.dataOffset
-	_, err := w.file.WriteAt(compressed, offset)
+	_, err = w.file.WriteAt(data, offset)
 	if err != nil {
 		return err
 	}
 
 	// 添加到 B+Tree
-	err = w.builder.Add(row.Seq, offset, int32(len(compressed)))
+	err = w.builder.Add(row.Seq, offset, int32(len(data)))
 	if err != nil {
 		return err
 	}
 
 	// 更新数据偏移
-	w.dataOffset += int64(len(compressed))
+	w.dataOffset += int64(len(data))
 
 	return nil
 }
@@ -595,7 +566,7 @@ func (w *SSTableWriter) Finish() error {
 	header := &SSTableHeader{
 		Magic:       SSTableMagicNumber,
 		Version:     SSTableVersion,
-		Compression: w.compression,
+		Compression: 0, // 不使用压缩（保留字段用于向后兼容）
 		IndexOffset: SSTableHeaderSize,
 		IndexSize:   indexSize,
 		RootOffset:  rootOffset,
@@ -620,19 +591,13 @@ func (w *SSTableWriter) Finish() error {
 }
 
 // encodeSSTableRow 编码行数据 (使用二进制格式)
-func encodeSSTableRow(row *SSTableRow, schema *Schema) []byte {
+func encodeSSTableRow(row *SSTableRow, schema *Schema) ([]byte, error) {
 	// 使用二进制格式编码
 	encoded, err := encodeSSTableRowBinary(row, schema)
 	if err != nil {
-		// 降级到 JSON (不应该发生)
-		data := map[string]any{
-			"_seq":  row.Seq,
-			"_time": row.Time,
-			"data":  row.Data,
-		}
-		encoded, _ = json.Marshal(data)
+		return nil, fmt.Errorf("failed to encode row: %w", err)
 	}
-	return encoded
+	return encoded, nil
 }
 
 // SSTableReader SST 文件读取器
@@ -704,21 +669,9 @@ func (r *SSTableReader) Get(key int64) (*SSTableRow, error) {
 		return nil, fmt.Errorf("invalid data offset")
 	}
 
-	compressed := r.mmap[dataOffset : dataOffset+int64(dataSize)]
+	data := r.mmap[dataOffset : dataOffset+int64(dataSize)]
 
-	// 4. 解压缩
-	var data []byte
-	var err error
-	if r.header.Compression == SSTableCompressionSnappy {
-		data, err = snappy.Decode(nil, compressed)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		data = compressed
-	}
-
-	// 5. 反序列化
+	// 4. 反序列化（无压缩）
 	row, err := decodeSSTableRow(data, r.schema)
 	if err != nil {
 		return nil, err
@@ -745,21 +698,9 @@ func (r *SSTableReader) GetPartial(key int64, fields []string) (*SSTableRow, err
 		return nil, fmt.Errorf("invalid data offset")
 	}
 
-	compressed := r.mmap[dataOffset : dataOffset+int64(dataSize)]
+	data := r.mmap[dataOffset : dataOffset+int64(dataSize)]
 
-	// 4. 解压缩
-	var data []byte
-	var err error
-	if r.header.Compression == SSTableCompressionSnappy {
-		data, err = snappy.Decode(nil, compressed)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		data = compressed
-	}
-
-	// 5. 按需反序列化（只解析需要的字段）
+	// 4. 按需反序列化（只解析需要的字段，无压缩）
 	row, err := decodeSSTableRowBinaryPartial(data, r.schema, fields)
 	if err != nil {
 		return nil, err
@@ -799,27 +740,13 @@ func (r *SSTableReader) Close() error {
 	return nil
 }
 
-// decodeSSTableRow 解码行数据
+// decodeSSTableRow 解码行数据（只支持二进制格式）
 func decodeSSTableRow(data []byte, schema *Schema) (*SSTableRow, error) {
-	// 尝试使用二进制格式解码
+	// 使用二进制格式解码
 	row, err := decodeSSTableRowBinary(data, schema)
-	if err == nil {
-		return row, nil
-	}
-
-	// 降级到 JSON (兼容旧数据)
-	var decoded map[string]any
-	err = json.Unmarshal(data, &decoded)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode row: %w", err)
 	}
-
-	row = &SSTableRow{
-		Seq:  int64(decoded["_seq"].(float64)),
-		Time: int64(decoded["_time"].(float64)),
-		Data: decoded["data"].(map[string]any),
-	}
-
 	return row, nil
 }
 

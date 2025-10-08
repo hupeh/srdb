@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"code.tczkiot.com/srdb"
+	"code.tczkiot.com/wlw/srdb"
 )
 
 // CheckSeq 检查特定序列号的数据

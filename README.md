@@ -46,7 +46,7 @@
 ### 安装
 
 ```bash
-go get code.tczkiot.com/srdb
+go get code.tczkiot.com/wlw/srdb
 ```
 
 ### 基本示例
@@ -57,7 +57,7 @@ package main
 import (
     "fmt"
     "log"
-    "code.tczkiot.com/srdb"
+    "code.tczkiot.com/wlw/srdb"
 )
 
 func main() {
@@ -376,21 +376,19 @@ go run main.go serve --auto-insert
 
 ```
 Database
-├── Table
-│   ├── Schema（表结构）
-│   └── Engine（存储引擎）
-│       ├── MemTable Manager
-│       │   ├── Active MemTable
-│       │   └── Immutable MemTables
-│       ├── SSTable Manager
-│       │   └── SST Files (Level 0-6)
-│       ├── WAL Manager
-│       │   └── Write-Ahead Log
-│       ├── Version Manager
-│       │   └── MVCC Versions
-│       └── Compaction Manager
-│           ├── Picker（选择策略）
-│           └── Worker（执行合并）
+├── Table (Schema + Storage)
+│   ├── MemTable Manager
+│   │   ├── Active MemTable
+│   │   └── Immutable MemTables
+│   ├── SSTable Manager
+│   │   └── SST Files (Level 0-6)
+│   ├── WAL Manager
+│   │   └── Write-Ahead Log
+│   ├── Version Manager
+│   │   └── MVCC Versions
+│   └── Compaction Manager
+│       ├── Picker（选择策略）
+│       └── Worker（执行合并）
 └── Query Builder
     └── Expression Engine
 ```
@@ -454,13 +452,14 @@ srdb/
 ├── btree.go              # B-Tree 索引实现
 ├── compaction.go         # Compaction 管理器
 ├── database.go           # 数据库管理
-├── engine.go             # 存储引擎核心
+├── errors.go             # 错误定义和处理
 ├── index.go              # 索引管理
+├── index_btree.go        # 索引 B+Tree
 ├── memtable.go           # 内存表
 ├── query.go              # 查询构建器
 ├── schema.go             # Schema 定义
 ├── sstable.go            # SSTable 文件
-├── table.go              # 表管理
+├── table.go              # 表管理（含存储引擎）
 ├── version.go            # 版本管理（MVCC）
 ├── wal.go                # Write-Ahead Log
 ├── webui/                # Web UI
@@ -477,7 +476,7 @@ srdb/
 go test ./...
 
 # 运行特定测试
-go test -v -run TestEngine
+go test -v -run TestTable
 
 # 性能测试
 go test -bench=. -benchmem
@@ -500,7 +499,7 @@ go build -o webui main.go
 
 - [设计文档](DESIGN.md) - 详细的架构设计和实现原理
 - [WebUI 文档](examples/webui/README.md) - Web 管理界面使用指南
-- [API 文档](https://pkg.go.dev/code.tczkiot.com/srdb) - Go API 参考
+- [API 文档](https://pkg.go.dev/code.tczkiot.com/wlw/srdb) - Go API 参考
 
 ---
 
@@ -541,8 +540,8 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 📧 联系方式
 
-- 项目主页：https://code.tczkiot.com/srdb
-- Issue 跟踪：https://code.tczkiot.com/srdb/issues
+- 项目主页：https://code.tczkiot.com/wlw/srdb
+- Issue 跟踪：https://code.tczkiot.com/wlw/srdb/issues
 
 ---
 

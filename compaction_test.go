@@ -19,6 +19,11 @@ func TestCompactionBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// 创建 Schema
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeInt64},
+	})
+
 	// 创建 VersionSet
 	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
@@ -32,6 +37,9 @@ func TestCompactionBasic(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sstMgr.Close()
+
+	// 设置 Schema
+	sstMgr.SetSchema(schema)
 
 	// 创建测试数据
 	rows1 := make([]*SSTableRow, 100)
@@ -75,6 +83,7 @@ func TestCompactionBasic(t *testing.T) {
 
 	// 创建 Compaction Manager
 	compactionMgr := NewCompactionManager(sstDir, versionSet, sstMgr)
+	compactionMgr.SetSchema(schema)
 
 	// 创建更多文件触发 Compaction
 	for i := 1; i < 5; i++ {
@@ -204,6 +213,11 @@ func TestCompactionMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// 创建 Schema
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeString},
+	})
+
 	// 创建 VersionSet
 	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
@@ -217,6 +231,9 @@ func TestCompactionMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sstMgr.Close()
+
+	// 设置 Schema
+	sstMgr.SetSchema(schema)
 
 	// 创建两个有重叠 key 的 SST 文件
 	rows1 := []*SSTableRow{
@@ -269,6 +286,7 @@ func TestCompactionMerge(t *testing.T) {
 
 	// 创建 Compactor
 	compactor := NewCompactor(sstDir, versionSet)
+	compactor.SetSchema(schema)
 
 	// 创建 Compaction 任务
 	version := versionSet.GetCurrent()
@@ -316,6 +334,11 @@ func BenchmarkCompaction(b *testing.B) {
 		b.Fatal(err)
 	}
 
+	// 创建 Schema
+	schema := NewSchema("test", []Field{
+		{Name: "value", Type: FieldTypeString},
+	})
+
 	// 创建 VersionSet
 	versionSet, err := NewVersionSet(manifestDir)
 	if err != nil {
@@ -329,6 +352,9 @@ func BenchmarkCompaction(b *testing.B) {
 		b.Fatal(err)
 	}
 	defer sstMgr.Close()
+
+	// 设置 Schema
+	sstMgr.SetSchema(schema)
 
 	// 创建测试数据
 	const numFiles = 5
@@ -372,6 +398,7 @@ func BenchmarkCompaction(b *testing.B) {
 
 	// 创建 Compactor
 	compactor := NewCompactor(sstDir, versionSet)
+	compactor.SetSchema(schema)
 	version := versionSet.GetCurrent()
 
 	task := &CompactionTask{
@@ -401,16 +428,16 @@ func TestCompactionQueryOrder(t *testing.T) {
 		{Name: "timestamp", Type: FieldTypeInt64},
 	})
 
-	// 打开 Engine (使用较小的 MemTable 触发频繁 flush)
-	engine, err := OpenEngine(&EngineOptions{
+	// 打开 Table (使用较小的 MemTable 触发频繁 flush)
+	table, err := OpenTable(&TableOptions{
 		Dir:          tmpDir,
 		MemTableSize: 2 * 1024 * 1024, // 2MB MemTable
-		Schema:       schema,
+		Name:         schema.Name, Fields: schema.Fields,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer engine.Close()
+	defer table.Close()
 
 	t.Logf("开始插入 4000 条数据...")
 
@@ -423,7 +450,7 @@ func TestCompactionQueryOrder(t *testing.T) {
 			largeData[j] = byte('A' + (j % 26))
 		}
 
-		err := engine.Insert(map[string]any{
+		err := table.Insert(map[string]any{
 			"id":        int64(i),
 			"name":      fmt.Sprintf("user_%d", i),
 			"data":      string(largeData),
@@ -447,7 +474,7 @@ func TestCompactionQueryOrder(t *testing.T) {
 	t.Logf("开始查询所有数据...")
 
 	// 查询所有数据
-	rows, err := engine.Query().Rows()
+	rows, err := table.Query().Rows()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,7 +541,7 @@ func TestCompactionQueryOrder(t *testing.T) {
 	t.Logf("✓ 所有数据完整性验证通过")
 
 	// 输出 compaction 统计信息
-	stats := engine.GetCompactionManager().GetLevelStats()
+	stats := table.GetCompactionManager().GetLevelStats()
 	t.Logf("Compaction 统计:")
 	for _, levelStat := range stats {
 		level := levelStat["level"].(int)
