@@ -380,45 +380,40 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 	}
 	defer queryRows.Close()
 
-	// 收集所有 rows 到内存中用于分页
-	allRows := make([]*srdb.SSTableRow, 0)
-	for queryRows.Next() {
-		row := queryRows.Row()
-		sstRow := &srdb.SSTableRow{
-			Seq:  row.Data()["_seq"].(int64),
-			Time: row.Data()["_time"].(int64),
-			Data: make(map[string]any),
-		}
-		// 复制其他字段
-		for k, v := range row.Data() {
-			if k != "_seq" && k != "_time" {
-				sstRow.Data[k] = v
-			}
-		}
-		allRows = append(allRows, sstRow)
-	}
-
-	// 计算分页
-	totalRows := int64(len(allRows))
+	// 计算分页范围
 	offset := (page - 1) * pageSize
-	end := min(offset+pageSize, int(totalRows))
+	currentIndex := 0
 
-	// 获取当前页数据
-	rows := make([]*srdb.SSTableRow, 0, pageSize)
-	if offset < int(totalRows) {
-		rows = allRows[offset:end]
-	}
-
-	// 构造响应，对 string 字段进行剪裁
+	// 直接在遍历时进行分页和字段处理
 	const maxStringLength = 100 // 最大字符串长度
-	data := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		rowData := make(map[string]any)
-		rowData["_seq"] = row.Seq
-		rowData["_time"] = row.Time
+	data := make([]map[string]any, 0, pageSize)
+	totalRows := int64(0)
 
-		// 遍历所有字段
-		for k, v := range row.Data {
+	for queryRows.Next() {
+		totalRows++
+
+		// 跳过不在当前页的数据
+		if currentIndex < offset {
+			currentIndex++
+			continue
+		}
+
+		// 已经收集够当前页的数据
+		if len(data) >= pageSize {
+			continue
+		}
+
+		row := queryRows.Row()
+		rowData := make(map[string]any)
+		rowData["_seq"] = row.Data()["_seq"]
+		rowData["_time"] = row.Data()["_time"]
+
+		// 遍历所有字段并进行字符串截断
+		for k, v := range row.Data() {
+			if k == "_seq" || k == "_time" {
+				continue
+			}
+
 			// 检查字段类型
 			field, err := tableSchema.GetField(k)
 			if err == nil && field.Type == srdb.FieldTypeString {
@@ -434,7 +429,9 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 			}
 			rowData[k] = v
 		}
+
 		data = append(data, rowData)
+		currentIndex++
 	}
 
 	response := map[string]any{

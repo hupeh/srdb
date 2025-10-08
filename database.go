@@ -254,3 +254,86 @@ func (db *Database) GetAllTablesInfo() map[string]*Table {
 	maps.Copy(result, db.tables)
 	return result
 }
+
+// CleanTable 清除指定表的数据（保留表结构）
+func (db *Database) CleanTable(name string) error {
+	db.mu.RLock()
+	table, exists := db.tables[name]
+	db.mu.RUnlock()
+
+	if !exists {
+		return fmt.Errorf("table %s does not exist", name)
+	}
+
+	return table.Clean()
+}
+
+// DestroyTable 销毁指定表并从 Database 中删除
+func (db *Database) DestroyTable(name string) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	table, exists := db.tables[name]
+	if !exists {
+		return fmt.Errorf("table %s does not exist", name)
+	}
+
+	// 1. 销毁表（删除文件）
+	if err := table.Destroy(); err != nil {
+		return fmt.Errorf("destroy table: %w", err)
+	}
+
+	// 2. 从内存中删除
+	delete(db.tables, name)
+
+	// 3. 从元数据中删除
+	newTables := make([]TableInfo, 0, len(db.metadata.Tables)-1)
+	for _, info := range db.metadata.Tables {
+		if info.Name != name {
+			newTables = append(newTables, info)
+		}
+	}
+	db.metadata.Tables = newTables
+
+	// 4. 保存元数据
+	return db.saveMetadata()
+}
+
+// Clean 清除所有表的数据（保留表结构和 Database 可用）
+func (db *Database) Clean() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	// 清除所有表的数据
+	for name, table := range db.tables {
+		if err := table.Clean(); err != nil {
+			return fmt.Errorf("clean table %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+// Destroy 销毁整个数据库并删除所有数据文件
+func (db *Database) Destroy() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	// 1. 关闭所有表
+	for _, table := range db.tables {
+		if err := table.Close(); err != nil {
+			return fmt.Errorf("close table: %w", err)
+		}
+	}
+
+	// 2. 删除整个数据库目录
+	if err := os.RemoveAll(db.dir); err != nil {
+		return fmt.Errorf("remove database directory: %w", err)
+	}
+
+	// 3. 清空内存中的表
+	db.tables = make(map[string]*Table)
+	db.metadata.Tables = nil
+
+	return nil
+}

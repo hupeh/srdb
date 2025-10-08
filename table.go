@@ -8,12 +8,11 @@ import (
 
 // Table 表
 type Table struct {
-	name      string    // 表名
-	dir       string    // 表目录
-	schema    *Schema   // Schema
-	engine    *Engine   // Engine 实例
-	database  *Database // 所属数据库
-	createdAt int64     // 创建时间
+	name      string  // 表名
+	dir       string  // 表目录
+	schema    *Schema // Schema
+	engine    *Engine // Engine 实例
+	createdAt int64   // 创建时间
 }
 
 // createTable 创建新表
@@ -42,7 +41,6 @@ func createTable(name string, schema *Schema, db *Database) (*Table, error) {
 		dir:       tableDir,
 		schema:    schema,
 		engine:    engine,
-		database:  db,
 		createdAt: time.Now().Unix(),
 	}
 
@@ -67,11 +65,10 @@ func openTable(name string, db *Database) (*Table, error) {
 	sch := eng.GetSchema()
 
 	table := &Table{
-		name:     name,
-		dir:      tableDir,
-		schema:   sch,
-		engine:   eng,
-		database: db,
+		name:   name,
+		dir:    tableDir,
+		schema: sch,
+		engine: eng,
 	}
 
 	return table, nil
@@ -138,4 +135,20 @@ func (t *Table) Close() error {
 // GetCreatedAt 获取表创建时间
 func (t *Table) GetCreatedAt() int64 {
 	return t.createdAt
+}
+
+// Clean 清除表的所有数据（保留表结构和 Table 可用）
+func (t *Table) Clean() error {
+	if t.engine != nil {
+		return t.engine.Clean()
+	}
+	return nil
+}
+
+// Destroy 销毁表并删除所有数据文件（不从 Database 中删除）
+func (t *Table) Destroy() error {
+	if t.engine != nil {
+		return t.engine.Destroy()
+	}
+	return nil
 }
