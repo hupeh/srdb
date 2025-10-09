@@ -9,8 +9,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/edsrzf/mmap-go"
+	"github.com/shopspring/decimal"
 )
 
 const (
@@ -230,47 +232,101 @@ func encodeSSTableRowBinary(row *SSTableRow, schema *Schema) ([]byte, error) {
 // writeFieldBinaryValue 写入字段值（二进制格式）
 func writeFieldBinaryValue(buf *bytes.Buffer, typ FieldType, value any) error {
 	switch typ {
-	case FieldTypeInt64:
-		var v int64
-		switch val := value.(type) {
-		case int:
-			v = int64(val)
-		case int64:
-			v = val
-		case int32:
-			v = int64(val)
-		case int16:
-			v = int64(val)
-		case int8:
-			v = int64(val)
-		case float64:
-			v = int64(val)
-		default:
-			return fmt.Errorf("cannot convert %T to int64", value)
+	// 有符号整数类型
+	case Int:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("expected int, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, int64(v))
+
+	case Int8:
+		v, ok := value.(int8)
+		if !ok {
+			return fmt.Errorf("expected int8, got %T", value)
 		}
 		return binary.Write(buf, binary.LittleEndian, v)
 
-	case FieldTypeFloat:
-		var v float64
-		switch val := value.(type) {
-		case float64:
-			v = val
-		case float32:
-			v = float64(val)
-		default:
-			return fmt.Errorf("cannot convert %T to float64", value)
+	case Int16:
+		v, ok := value.(int16)
+		if !ok {
+			return fmt.Errorf("expected int16, got %T", value)
 		}
 		return binary.Write(buf, binary.LittleEndian, v)
 
-	case FieldTypeBool:
-		var b byte
-		if value.(bool) {
-			b = 1
+	case Int32, Rune:
+		// rune 和 int32 底层类型相同（都是 int32）
+		v, ok := value.(int32)
+		if !ok {
+			return fmt.Errorf("expected int32 (or rune), got %T", value)
 		}
-		return buf.WriteByte(b)
+		return binary.Write(buf, binary.LittleEndian, v)
 
-	case FieldTypeString:
-		s := value.(string)
+	case Int64:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("expected int64, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	// 无符号整数类型
+	case Uint:
+		v, ok := value.(uint)
+		if !ok {
+			return fmt.Errorf("expected uint, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, uint64(v))
+
+	case Uint8, Byte:
+		// byte 和 uint8 底层类型相同
+		v, ok := value.(uint8)
+		if !ok {
+			return fmt.Errorf("expected uint8 or byte, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	case Uint16:
+		v, ok := value.(uint16)
+		if !ok {
+			return fmt.Errorf("expected uint16, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	case Uint32:
+		v, ok := value.(uint32)
+		if !ok {
+			return fmt.Errorf("expected uint32, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	case Uint64:
+		v, ok := value.(uint64)
+		if !ok {
+			return fmt.Errorf("expected uint64, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	// 浮点类型
+	case Float32:
+		v, ok := value.(float32)
+		if !ok {
+			return fmt.Errorf("expected float32, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	case Float64:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("expected float64, got %T", value)
+		}
+		return binary.Write(buf, binary.LittleEndian, v)
+
+	// 字符串类型
+	case String:
+		s, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("expected string, got %T", value)
+		}
 		// 写入长度
 		if err := binary.Write(buf, binary.LittleEndian, uint32(len(s))); err != nil {
 			return err
@@ -278,6 +334,55 @@ func writeFieldBinaryValue(buf *bytes.Buffer, typ FieldType, value any) error {
 		// 写入内容
 		_, err := buf.WriteString(s)
 		return err
+
+	// 布尔类型
+	case Bool:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("expected bool, got %T", value)
+		}
+		var b byte
+		if v {
+			b = 1
+		}
+		return buf.WriteByte(b)
+
+	// Decimal 类型
+	case Decimal:
+		v, ok := value.(decimal.Decimal)
+		if !ok {
+			return fmt.Errorf("expected decimal.Decimal, got %T", value)
+		}
+		// 使用 MarshalBinary 序列化
+		data, err := v.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal decimal: %w", err)
+		}
+		// 写入长度
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
+			return err
+		}
+		// 写入数据
+		_, err = buf.Write(data)
+		return err
+
+	// 时间类型
+	case Time:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("expected time.Time, got %T", value)
+		}
+		// 存储为 Unix 时间戳（秒，int64）
+		return binary.Write(buf, binary.LittleEndian, v.Unix())
+
+	// 时间间隔类型
+	case Duration:
+		v, ok := value.(time.Duration)
+		if !ok {
+			return fmt.Errorf("expected time.Duration, got %T", value)
+		}
+		// 存储为纳秒（int64）
+		return binary.Write(buf, binary.LittleEndian, int64(v))
 
 	default:
 		return fmt.Errorf("unsupported field type: %d", typ)
@@ -287,14 +392,65 @@ func writeFieldBinaryValue(buf *bytes.Buffer, typ FieldType, value any) error {
 // writeFieldZeroValue 写入字段零值
 func writeFieldZeroValue(buf *bytes.Buffer, typ FieldType) error {
 	switch typ {
-	case FieldTypeInt64:
+	// 有符号整数类型
+	case Int:
 		return binary.Write(buf, binary.LittleEndian, int64(0))
-	case FieldTypeFloat:
-		return binary.Write(buf, binary.LittleEndian, float64(0))
-	case FieldTypeBool:
-		return buf.WriteByte(0)
-	case FieldTypeString:
+	case Int8:
+		return binary.Write(buf, binary.LittleEndian, int8(0))
+	case Int16:
+		return binary.Write(buf, binary.LittleEndian, int16(0))
+	case Int32, Rune:
+		return binary.Write(buf, binary.LittleEndian, int32(0))
+	case Int64:
+		return binary.Write(buf, binary.LittleEndian, int64(0))
+
+	// 无符号整数类型
+	case Uint:
+		return binary.Write(buf, binary.LittleEndian, uint64(0))
+	case Uint8, Byte:
+		return binary.Write(buf, binary.LittleEndian, uint8(0))
+	case Uint16:
+		return binary.Write(buf, binary.LittleEndian, uint16(0))
+	case Uint32:
 		return binary.Write(buf, binary.LittleEndian, uint32(0))
+	case Uint64:
+		return binary.Write(buf, binary.LittleEndian, uint64(0))
+
+	// 浮点类型
+	case Float32:
+		return binary.Write(buf, binary.LittleEndian, float32(0))
+	case Float64:
+		return binary.Write(buf, binary.LittleEndian, float64(0))
+
+	// 字符串类型
+	case String:
+		return binary.Write(buf, binary.LittleEndian, uint32(0))
+
+	// 布尔类型
+	case Bool:
+		return buf.WriteByte(0)
+
+	// Decimal 类型（零值）
+	case Decimal:
+		zero := decimal.Zero
+		data, err := zero.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("marshal zero decimal: %w", err)
+		}
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
+			return err
+		}
+		_, err = buf.Write(data)
+		return err
+
+	// 时间类型（零值：Unix epoch）
+	case Time:
+		return binary.Write(buf, binary.LittleEndian, int64(0))
+
+	// 时间间隔类型（零值）
+	case Duration:
+		return binary.Write(buf, binary.LittleEndian, int64(0))
+
 	default:
 		return fmt.Errorf("unsupported field type: %d", typ)
 	}
@@ -416,7 +572,58 @@ func decodeSSTableRowBinaryPartial(data []byte, schema *Schema, fields []string)
 // readFieldBinaryValue 读取字段值（二进制格式）
 func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, error) {
 	switch typ {
-	case FieldTypeInt64:
+	// 有符号整数类型
+	case Int:
+		var v int64
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return int(v), nil
+		}
+		return nil, nil
+
+	case Int8:
+		var v int8
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Int16:
+		var v int16
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Int32:
+		var v int32
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Rune:
+		var v int32
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return rune(v), nil
+		}
+		return nil, nil
+
+	case Int64:
 		var v int64
 		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
 			return nil, err
@@ -426,7 +633,79 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		}
 		return nil, nil
 
-	case FieldTypeFloat:
+	// 无符号整数类型
+	case Uint:
+		var v uint64
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return uint(v), nil
+		}
+		return nil, nil
+
+	case Uint8:
+		var v uint8
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Byte:
+		var v uint8
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return byte(v), nil
+		}
+		return nil, nil
+
+	case Uint16:
+		var v uint16
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Uint32:
+		var v uint32
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Uint64:
+		var v uint64
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	// 浮点类型
+	case Float32:
+		var v float32
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			return v, nil
+		}
+		return nil, nil
+
+	case Float64:
 		var v float64
 		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
 			return nil, err
@@ -436,17 +715,8 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		}
 		return nil, nil
 
-	case FieldTypeBool:
-		b, err := buf.ReadByte()
-		if err != nil {
-			return nil, err
-		}
-		if keep {
-			return b == 1, nil
-		}
-		return nil, nil
-
-	case FieldTypeString:
+	// 字符串类型
+	case String:
 		var length uint32
 		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 			return nil, err
@@ -457,6 +727,60 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		}
 		if keep {
 			return string(str), nil
+		}
+		return nil, nil
+
+	// 布尔类型
+	case Bool:
+		b, err := buf.ReadByte()
+		if err != nil {
+			return nil, err
+		}
+		if keep {
+			return b == 1, nil
+		}
+		return nil, nil
+
+	// Decimal 类型
+	case Decimal:
+		var length uint32
+		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
+			return nil, err
+		}
+		data := make([]byte, length)
+		if _, err := buf.Read(data); err != nil {
+			return nil, err
+		}
+		if keep {
+			var d decimal.Decimal
+			if err := d.UnmarshalBinary(data); err != nil {
+				return nil, fmt.Errorf("unmarshal decimal: %w", err)
+			}
+			return d, nil
+		}
+		return nil, nil
+
+	// 时间类型
+	case Time:
+		var v int64
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			// 从 Unix 时间戳（秒）转换为 time.Time
+			return time.Unix(v, 0), nil
+		}
+		return nil, nil
+
+	// 时间间隔类型
+	case Duration:
+		var v int64
+		if err := binary.Read(buf, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+		if keep {
+			// 从纳秒转换为 time.Duration
+			return time.Duration(v), nil
 		}
 		return nil, nil
 

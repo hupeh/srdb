@@ -131,9 +131,9 @@ database_dir/
 
 ```go
 schema := NewSchema("users", []Field{
-    {Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
-    {Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
-    {Name: "email", Type: FieldTypeString, Indexed: true, Comment: "邮箱（索引）"},
+    {Name: "name", Type: String, Indexed: false, Comment: "用户名"},
+    {Name: "age", Type: Int64, Indexed: false, Comment: "年龄"},
+    {Name: "email", Type: String, Indexed: true, Comment: "邮箱（索引）"},
 })
 
 table, _ := db.CreateTable("users", schema)
@@ -142,7 +142,112 @@ table, _ := db.CreateTable("users", schema)
 - Schema 在 `Insert()` 时强制验证类型和必填字段
 - 索引字段（`Indexed: true`）自动创建二级索引
 - Schema 持久化到 `table_dir/schema.json`，包含校验和防篡改
-- 支持的类型：`FieldTypeString`, `FieldTypeInt64`, `FieldTypeBool`, `FieldTypeFloat`
+- **支持的类型** (17 种，精确映射到 Go 基础类型):
+  - **有符号整数** (5种): `Int`, `Int8`, `Int16`, `Int32`, `Int64`
+  - **无符号整数** (5种): `Uint`, `Uint8`, `Uint16`, `Uint32`, `Uint64`
+  - **浮点数** (2种): `Float32`, `Float64`
+  - **字符串** (1种): `String`
+  - **布尔** (1种): `Bool`
+  - **特殊类型** (3种): `Byte` (独立类型，底层=uint8), `Rune` (独立类型，底层=int32), `Decimal` (高精度十进制，使用 shopspring/decimal)
+- **Nullable 支持**: 字段可标记为 `Nullable: true`，允许 NULL 值
+
+### 类型系统详解
+
+**精确类型映射**:
+从 v1.x 开始，SRDB 采用精确类型映射策略，每个 Go 基础类型都有对应的 FieldType。这带来以下优势：
+
+1. **存储优化**: 使用 `uint8` (1 字节) 存储百分比，而不是 `int64` (8 字节)
+2. **语义明确**: `uint32` 表示设备ID，`float32` 表示传感器读数
+3. **类型安全**: 编译期和运行期双重类型检查
+
+**类型转换规则**:
+
+```go
+// 1. 相同类型：直接接受
+{Name: "age", Type: Int32}
+Insert(map[string]any{"age": int32(25)})  // ✓
+
+// 2. 兼容类型：自动转换（有符号 ↔ 无符号，需非负）
+{Name: "count", Type: Int64}
+Insert(map[string]any{"count": uint32(100)})  // ✓
+
+// 3. 类型提升：整数 → 浮点
+{Name: "ratio", Type: Float32}
+Insert(map[string]any{"ratio": int32(42)})  // ✓ 转为 42.0
+
+// 4. JSON 兼容：float64 → 整数（需为整数值）
+{Name: "id", Type: Int64}
+Insert(map[string]any{"id": float64(123.0)})  // ✓ JSON 反序列化场景
+
+// 5. 负数 → 无符号：拒绝
+{Name: "index", Type: Uint32}
+Insert(map[string]any{"index": int32(-1)})  // ✗ 错误
+```
+
+**最佳实践**:
+
+```go
+// 推荐：根据数据范围选择合适的类型
+schema, _ := NewSchema("sensors", []Field{
+    {Name: "device_id", Type: Uint32},      // 0 ~ 42亿
+    {Name: "temperature", Type: Float32},   // 单精度足够
+    {Name: "humidity", Type: Uint8},        // 0-100
+    {Name: "status", Type: Bool},           // 布尔状态
+})
+
+// 避免：盲目使用 int64 和 float64
+schema, _ := NewSchema("sensors_bad", []Field{
+    {Name: "device_id", Type: Int64},       // 浪费 4 字节
+    {Name: "temperature", Type: Float64},   // 浪费 4 字节
+    {Name: "humidity", Type: Int64},        // 浪费 7 字节！
+    {Name: "status", Type: Int64},          // 浪费 7 字节！
+})
+```
+
+**新增类型的使用场景**:
+
+```go
+// Byte 类型 - 状态码、标志位
+{Name: "status_code", Type: Byte, Comment: "HTTP 状态码 (0-255)"}
+Insert(map[string]any{"status_code": uint8(200)})  // byte 和 uint8 底层相同
+
+// Rune 类型 - 单个字符
+{Name: "grade", Type: Rune, Comment: "等级 (S/A/B/C)"}
+Insert(map[string]any{"grade": rune('A')})  // rune 和 int32 底层相同
+
+// Decimal 类型 - 金融计算
+{Name: "amount", Type: Decimal, Comment: "交易金额"}
+import "github.com/shopspring/decimal"
+Insert(map[string]any{"amount": decimal.NewFromFloat(123.456)})
+
+// Nullable 支持 - 可选字段
+{Name: "email", Type: String, Nullable: true, Comment: "邮箱（可选）"}
+Insert(map[string]any{"email": nil})  // 允许 NULL
+Insert(map[string]any{"email": "user@example.com"})  // 或有值
+```
+
+**从结构体自动生成 Schema**:
+
+```go
+type Sensor struct {
+    DeviceID    uint32  `srdb:"device_id;indexed;comment:设备ID"`
+    Temperature float32 `srdb:"temperature;comment:温度"`
+    Humidity    uint8   `srdb:"humidity;comment:湿度 0-100"`
+    Online      bool    `srdb:"online;comment:是否在线"`
+}
+
+// 自动映射：
+//   uint32 → Uint32
+//   float32 → Float32
+//   uint8 → Uint8 (也可用 byte)
+//   bool → Bool
+fields, _ := StructToFields(Sensor{})
+schema, _ := NewSchema("sensors", fields)
+```
+
+**参考示例**:
+- `examples/all_types/` - 展示所有 17 种类型的基本使用
+- `examples/new_types/` - 展示新增的 Byte、Rune、Decimal 类型和 Nullable 支持的实际应用场景
 
 ### Query Builder
 
@@ -292,12 +397,25 @@ Magic (4B) | Seq (8B) | Time (8B) | FieldCount (2B) |
 
 - **Schema 是强制的**: 所有表必须定义 Schema，不再支持无 Schema 模式
 - **索引非自动创建**: 需要在 Schema 中显式标记 `Indexed: true`
-- **类型严格**: Schema 验证严格，int 和 int64 需要正确匹配
+- **类型名称简化**:
+  - ⚠️ **重要变更**: 从 v2.0 开始，类型名称已简化，使用简短形式（如 `String` 而非 `FieldTypeString`）
+  - 每个 Go 类型有对应的简短常量（如 `int32` → `Int32`，`string` → `String`）
+  - 插入时类型会自动转换（如 `int` → `int32`），但需要注意负数不能转为无符号类型
+- **新增类型的使用**:
+  - **Byte**: 虽然底层是 `uint8`，但在 Schema 中作为独立类型，语义更清晰（用于状态码、标志位等）
+  - **Rune**: 虽然底层是 `int32`，但在 Schema 中作为独立类型，用于存储单个 Unicode 字符
+  - **Decimal**: 必须使用 `github.com/shopspring/decimal` 包，用于金融计算等需要精确数值的场景
+- **Nullable 支持**:
+  - 需要显式标记 `Nullable: true`，默认字段不允许 NULL
+  - NULL 值在 Go 中表示为 `nil`
+  - 读取时需要检查值是否存在且不为 nil
+- **选择合适的类型大小**:
+  - 避免盲目使用 `Int64`/`Float64`，根据数据范围选择（如百分比用 `Uint8`，状态码用 `Byte`）
+  - 过大的类型浪费存储和内存，影响性能
 - **Compaction 磁盘占用**: 合并期间旧文件和新文件共存，会暂时增加磁盘使用
 - **MemTable flush 异步**: 关闭时需要等待 immutable flush 完成
 - **mmap 虚拟内存**: 可能显示较大的虚拟内存使用（正常，OS 管理，不是实际 RAM）
 - **无 panic**: 所有 panic 已替换为错误返回，需要正确处理错误
-- **废弃代码**: `SSTableCompressionNone` 等常量已删除
 
 ## Web UI
 

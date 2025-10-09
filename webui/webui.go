@@ -415,7 +415,7 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 
 			// 检查字段类型
 			field, err := tableSchema.GetField(k)
-			if err == nil && field.Type == srdb.FieldTypeString {
+			if err == nil && field.Type == srdb.String {
 				// 对字符串字段进行剪裁
 				if str, ok := v.(string); ok {
 					runes := []rune(str)

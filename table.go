@@ -398,8 +398,8 @@ func (t *Table) insertSingle(data map[string]any) error {
 		Data: data,
 	}
 
-	// 3. 序列化
-	rowData, err := json.Marshal(row)
+	// 3. 序列化（使用二进制格式，保留类型信息）
+	rowData, err := encodeSSTableRowBinary(row, t.schema)
 	if err != nil {
 		return err
 	}
@@ -437,12 +437,12 @@ func (t *Table) Get(seq int64) (*SSTableRow, error) {
 	// 1. 先查 MemTable Manager (Active + Immutables)
 	data, found := t.memtableManager.Get(seq)
 	if found {
-		var row SSTableRow
-		err := json.Unmarshal(data, &row)
+		// 使用二进制解码
+		row, err := decodeSSTableRowBinary(data, t.schema)
 		if err != nil {
 			return nil, err
 		}
-		return &row, nil
+		return row, nil
 	}
 
 	// 2. 查询 SST 文件
@@ -454,24 +454,12 @@ func (t *Table) GetPartial(seq int64, fields []string) (*SSTableRow, error) {
 	// 1. 先查 MemTable Manager (Active + Immutables)
 	data, found := t.memtableManager.Get(seq)
 	if found {
-		var row SSTableRow
-		err := json.Unmarshal(data, &row)
+		// 使用二进制解码（支持部分解码）
+		row, err := decodeSSTableRowBinaryPartial(data, t.schema, fields)
 		if err != nil {
 			return nil, err
 		}
-
-		// MemTable 中的数据已经完全解析，需要手动过滤字段
-		if len(fields) > 0 {
-			filteredData := make(map[string]any)
-			for _, field := range fields {
-				if val, ok := row.Data[field]; ok {
-					filteredData[field] = val
-				}
-			}
-			row.Data = filteredData
-		}
-
-		return &row, nil
+		return row, nil
 	}
 
 	// 2. 查询 SST 文件（按需解码）
@@ -505,10 +493,10 @@ func (t *Table) flushImmutable(imm *ImmutableMemTable, walNumber int64) error {
 	var rows []*SSTableRow
 	iter := imm.NewIterator()
 	for iter.Next() {
-		var row SSTableRow
-		err := json.Unmarshal(iter.Value(), &row)
+		// 使用二进制解码
+		row, err := decodeSSTableRowBinary(iter.Value(), t.schema)
 		if err == nil {
-			rows = append(rows, &row)
+			rows = append(rows, row)
 		}
 	}
 
@@ -609,10 +597,10 @@ func (t *Table) recover() error {
 
 			// 重放 WAL 到 Active MemTable
 			for _, entry := range entries {
-				// 验证 Schema
-				var row SSTableRow
-				if err := json.Unmarshal(entry.Data, &row); err != nil {
-					return fmt.Errorf("failed to unmarshal row during recovery (seq=%d): %w", entry.Seq, err)
+				// 使用二进制解码验证 Schema
+				row, err := decodeSSTableRowBinary(entry.Data, t.schema)
+				if err != nil {
+					return fmt.Errorf("failed to decode row during recovery (seq=%d): %w", entry.Seq, err)
 				}
 
 				// 验证 Schema

@@ -17,8 +17,8 @@ func TestSSTable(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "name", Type: FieldTypeString},
-		{Name: "age", Type: FieldTypeInt64},
+		{Name: "name", Type: String},
+		{Name: "age", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -168,7 +168,7 @@ func TestSSTableHeaderSerialization(t *testing.T) {
 func BenchmarkSSTableGet(b *testing.B) {
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "value", Type: FieldTypeInt64},
+		{Name: "value", Type: Int64},
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -212,9 +212,9 @@ func TestSSTableBinaryEncoding(t *testing.T) {
 	schema := &Schema{
 		Name: "users",
 		Fields: []Field{
-			{Name: "name", Type: FieldTypeString},
-			{Name: "age", Type: FieldTypeInt64},
-			{Name: "email", Type: FieldTypeString},
+			{Name: "name", Type: String},
+			{Name: "age", Type: Int64},
+			{Name: "email", Type: String},
 		},
 	}
 
@@ -262,9 +262,9 @@ func TestSSTableEncodingComparison(t *testing.T) {
 	schema := &Schema{
 		Name: "users",
 		Fields: []Field{
-			{Name: "name", Type: FieldTypeString},
-			{Name: "age", Type: FieldTypeInt64},
-			{Name: "email", Type: FieldTypeString},
+			{Name: "name", Type: String},
+			{Name: "age", Type: Int64},
+			{Name: "email", Type: String},
 		},
 	}
 
@@ -303,9 +303,9 @@ func BenchmarkSSTableBinaryEncoding(b *testing.B) {
 	schema := &Schema{
 		Name: "users",
 		Fields: []Field{
-			{Name: "name", Type: FieldTypeString},
-			{Name: "age", Type: FieldTypeInt64},
-			{Name: "email", Type: FieldTypeString},
+			{Name: "name", Type: String},
+			{Name: "age", Type: Int64},
+			{Name: "email", Type: String},
 		},
 	}
 
@@ -351,10 +351,10 @@ func TestSSTablePerFieldCompression(t *testing.T) {
 	schema := &Schema{
 		Name: "users",
 		Fields: []Field{
-			{Name: "name", Type: FieldTypeString, Indexed: false},
-			{Name: "age", Type: FieldTypeInt64, Indexed: false},
-			{Name: "email", Type: FieldTypeString, Indexed: false},
-			{Name: "score", Type: FieldTypeFloat, Indexed: false},
+			{Name: "name", Type: String, Indexed: false},
+			{Name: "age", Type: Int64, Indexed: false},
+			{Name: "email", Type: String, Indexed: false},
+			{Name: "score", Type: Float64, Indexed: false},
 		},
 	}
 
@@ -437,16 +437,16 @@ func TestSSTablePartialReadingPerformance(t *testing.T) {
 	schema := &Schema{
 		Name: "events",
 		Fields: []Field{
-			{Name: "field1", Type: FieldTypeString, Indexed: false},
-			{Name: "field2", Type: FieldTypeString, Indexed: false},
-			{Name: "field3", Type: FieldTypeString, Indexed: false},
-			{Name: "field4", Type: FieldTypeString, Indexed: false},
-			{Name: "field5", Type: FieldTypeString, Indexed: false},
-			{Name: "field6", Type: FieldTypeString, Indexed: false},
-			{Name: "field7", Type: FieldTypeString, Indexed: false},
-			{Name: "field8", Type: FieldTypeString, Indexed: false},
-			{Name: "field9", Type: FieldTypeString, Indexed: false},
-			{Name: "field10", Type: FieldTypeString, Indexed: false},
+			{Name: "field1", Type: String, Indexed: false},
+			{Name: "field2", Type: String, Indexed: false},
+			{Name: "field3", Type: String, Indexed: false},
+			{Name: "field4", Type: String, Indexed: false},
+			{Name: "field5", Type: String, Indexed: false},
+			{Name: "field6", Type: String, Indexed: false},
+			{Name: "field7", Type: String, Indexed: false},
+			{Name: "field8", Type: String, Indexed: false},
+			{Name: "field9", Type: String, Indexed: false},
+			{Name: "field10", Type: String, Indexed: false},
 		},
 	}
 

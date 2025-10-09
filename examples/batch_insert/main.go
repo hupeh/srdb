@@ -56,8 +56,8 @@ func example1() {
 	fmt.Println("=== 示例 1: 插入单个 map ===")
 
 	schema, err := srdb.NewSchema("users", []srdb.Field{
-		{Name: "name", Type: srdb.FieldTypeString, Comment: "用户名"},
-		{Name: "age", Type: srdb.FieldTypeInt64, Comment: "年龄"},
+		{Name: "name", Type: srdb.String, Comment: "用户名"},
+		{Name: "age", Type: srdb.Int64, Comment: "年龄"},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -93,9 +93,9 @@ func example2() {
 	fmt.Println("=== 示例 2: 批量插入 map 切片 ===")
 
 	schema, err := srdb.NewSchema("users", []srdb.Field{
-		{Name: "name", Type: srdb.FieldTypeString},
-		{Name: "age", Type: srdb.FieldTypeInt64},
-		{Name: "email", Type: srdb.FieldTypeString, Indexed: true},
+		{Name: "name", Type: srdb.String},
+		{Name: "age", Type: srdb.Int64},
+		{Name: "email", Type: srdb.String, Indexed: true},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -141,10 +141,10 @@ func example3() {
 	fmt.Println("=== 示例 3: 插入单个结构体 ===")
 
 	schema, err := srdb.NewSchema("users", []srdb.Field{
-		{Name: "name", Type: srdb.FieldTypeString},
-		{Name: "age", Type: srdb.FieldTypeInt64},
-		{Name: "email", Type: srdb.FieldTypeString},
-		{Name: "is_active", Type: srdb.FieldTypeBool},
+		{Name: "name", Type: srdb.String},
+		{Name: "age", Type: srdb.Int64},
+		{Name: "email", Type: srdb.String},
+		{Name: "is_active", Type: srdb.Bool},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -185,10 +185,10 @@ func example4() {
 	fmt.Println("=== 示例 4: 批量插入结构体切片 ===")
 
 	schema, err := srdb.NewSchema("users", []srdb.Field{
-		{Name: "name", Type: srdb.FieldTypeString},
-		{Name: "age", Type: srdb.FieldTypeInt64},
-		{Name: "email", Type: srdb.FieldTypeString},
-		{Name: "is_active", Type: srdb.FieldTypeBool},
+		{Name: "name", Type: srdb.String},
+		{Name: "age", Type: srdb.Int64},
+		{Name: "email", Type: srdb.String},
+		{Name: "is_active", Type: srdb.Bool},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -235,10 +235,10 @@ func example5() {
 	fmt.Println("=== 示例 5: 批量插入结构体指针切片 ===")
 
 	schema, err := srdb.NewSchema("users", []srdb.Field{
-		{Name: "name", Type: srdb.FieldTypeString},
-		{Name: "age", Type: srdb.FieldTypeInt64},
-		{Name: "email", Type: srdb.FieldTypeString},
-		{Name: "is_active", Type: srdb.FieldTypeBool},
+		{Name: "name", Type: srdb.String},
+		{Name: "age", Type: srdb.Int64},
+		{Name: "email", Type: srdb.String},
+		{Name: "is_active", Type: srdb.Bool},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -278,10 +278,10 @@ func example6() {
 	fmt.Println("=== 示例 6: 使用 snake_case 自动转换 ===")
 
 	schema, err := srdb.NewSchema("products", []srdb.Field{
-		{Name: "product_id", Type: srdb.FieldTypeString, Comment: "产品ID"},
-		{Name: "product_name", Type: srdb.FieldTypeString, Comment: "产品名称"},
-		{Name: "price", Type: srdb.FieldTypeFloat, Comment: "价格"},
-		{Name: "in_stock", Type: srdb.FieldTypeBool, Comment: "是否有货"},
+		{Name: "product_id", Type: srdb.String, Comment: "产品ID"},
+		{Name: "product_name", Type: srdb.String, Comment: "产品名称"},
+		{Name: "price", Type: srdb.Float64, Comment: "价格"},
+		{Name: "in_stock", Type: srdb.Bool, Comment: "是否有货"},
 	})
 	if err != nil {
 		log.Fatal(err)

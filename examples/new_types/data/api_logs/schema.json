@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "timestamp": 1760030838,
+  "checksum": "db36b32950014d2d1551c398e67a7c463fd04bdf98be5a9dec64675cdb0882af",
+  "schema": {
+    "Name": "api_logs",
+    "Fields": [
+      {
+        "Name": "endpoint",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "API 端点"
+      },
+      {
+        "Name": "status_code",
+        "Type": 15,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "HTTP 状态码（用 byte 节省空间）"
+      },
+      {
+        "Name": "response_time_ms",
+        "Type": 8,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "响应时间（毫秒）"
+      }
+    ]
+  }
+}

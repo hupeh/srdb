@@ -12,7 +12,7 @@ func TestIndexVersionControl(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	testSchema, err := NewSchema("test", []Field{
-		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
+		{Name: "name", Type: String, Indexed: true, Comment: "名称"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestIncrementalUpdate(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	testSchema, err := NewSchema("test", []Field{
-		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
+		{Name: "name", Type: String, Indexed: true, Comment: "名称"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -150,7 +150,7 @@ func TestNeedsUpdate(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	testSchema, err := NewSchema("test", []Field{
-		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
+		{Name: "name", Type: String, Indexed: true, Comment: "名称"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -184,8 +184,8 @@ func TestIndexPersistence(t *testing.T) {
 
 	// 创建 Schema
 	testSchema, err := NewSchema("test", []Field{
-		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
-		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
+		{Name: "name", Type: String, Indexed: true, Comment: "名称"},
+		{Name: "age", Type: Int64, Indexed: true, Comment: "年龄"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -266,7 +266,7 @@ func TestIndexDropWithFile(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	testSchema, err := NewSchema("test", []Field{
-		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
+		{Name: "name", Type: String, Indexed: true, Comment: "名称"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -306,9 +306,9 @@ func TestIndexQueryIntegration(t *testing.T) {
 
 	// 1. 创建带索引字段的 Schema
 	schema, err := NewSchema("users", []Field{
-		{Name: "name", Type: FieldTypeString, Indexed: false},
-		{Name: "email", Type: FieldTypeString, Indexed: true}, // email 字段有索引
-		{Name: "age", Type: FieldTypeInt64, Indexed: false},
+		{Name: "name", Type: String, Indexed: false},
+		{Name: "email", Type: String, Indexed: true}, // email 字段有索引
+		{Name: "age", Type: Int64, Indexed: false},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -469,9 +469,9 @@ func TestIndexPersistenceAcrossRestart(t *testing.T) {
 	// 1. 第一次打开：创建数据和索引
 	{
 		schema, err := NewSchema("products", []Field{
-			{Name: "name", Type: FieldTypeString, Indexed: false},
-			{Name: "category", Type: FieldTypeString, Indexed: true},
-			{Name: "price", Type: FieldTypeInt64, Indexed: false},
+			{Name: "name", Type: String, Indexed: false},
+			{Name: "category", Type: String, Indexed: true},
+			{Name: "price", Type: Int64, Indexed: false},
 		})
 		if err != nil {
 			t.Fatal(err)

@@ -13,9 +13,9 @@ func TestIndexBTreeBasic(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "id", Type: FieldTypeInt64},
-		{Name: "name", Type: FieldTypeString},
-		{Name: "city", Type: FieldTypeString},
+		{Name: "id", Type: Int64},
+		{Name: "name", Type: String},
+		{Name: "city", Type: String},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -130,8 +130,8 @@ func TestIndexBTreeLargeDataset(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "id", Type: FieldTypeInt64},
-		{Name: "category", Type: FieldTypeString},
+		{Name: "id", Type: Int64},
+		{Name: "category", Type: String},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -218,8 +218,8 @@ func TestIndexBTreeBackwardCompatibility(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "id", Type: FieldTypeInt64},
-		{Name: "status", Type: FieldTypeString},
+		{Name: "id", Type: Int64},
+		{Name: "status", Type: String},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -296,8 +296,8 @@ func TestIndexBTreeIncrementalUpdate(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "id", Type: FieldTypeInt64},
-		{Name: "tag", Type: FieldTypeString},
+		{Name: "id", Type: Int64},
+		{Name: "tag", Type: String},
 	})
 	if err != nil {
 		t.Fatal(err)

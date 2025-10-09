@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "timestamp": 1760032030,
+  "checksum": "1fdebae19ecf3cfcecddfa11ddcfc9c4b6656e1fd2477df8849639c108f4ada1",
+  "schema": {
+    "Name": "users",
+    "Fields": [
+      {
+        "Name": "username",
+        "Type": 13,
+        "Indexed": true,
+        "Nullable": false,
+        "Comment": "用户名（索引）"
+      },
+      {
+        "Name": "age",
+        "Type": 5,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "年龄"
+      },
+      {
+        "Name": "email",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": true,
+        "Comment": "邮箱（可选）"
+      },
+      {
+        "Name": "phone_number",
+        "Type": 13,
+        "Indexed": true,
+        "Nullable": true,
+        "Comment": "手机号（可空且索引）"
+      },
+      {
+        "Name": "bio",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": true,
+        "Comment": "个人简介（可选）"
+      },
+      {
+        "Name": "avatar",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": true,
+        "Comment": "头像 URL（可选）"
+      },
+      {
+        "Name": "balance",
+        "Type": 17,
+        "Indexed": false,
+        "Nullable": true,
+        "Comment": "账户余额（可空）"
+      },
+      {
+        "Name": "is_active",
+        "Type": 14,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "是否激活"
+      }
+    ]
+  }
+}

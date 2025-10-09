@@ -21,7 +21,7 @@ func TestCompactionBasic(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "value", Type: FieldTypeInt64},
+		{Name: "value", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +226,7 @@ func TestCompactionMerge(t *testing.T) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "value", Type: FieldTypeString},
+		{Name: "value", Type: String},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -350,7 +350,7 @@ func BenchmarkCompaction(b *testing.B) {
 
 	// 创建 Schema
 	schema, err := NewSchema("test", []Field{
-		{Name: "value", Type: FieldTypeString},
+		{Name: "value", Type: String},
 	})
 	if err != nil {
 		b.Fatal(err)
@@ -439,10 +439,10 @@ func TestCompactionQueryOrder(t *testing.T) {
 
 	// 创建 Schema - 包含多个字段以增加数据大小
 	schema, err := NewSchema("test", []Field{
-		{Name: "id", Type: FieldTypeInt64},
-		{Name: "name", Type: FieldTypeString},
-		{Name: "data", Type: FieldTypeString},
-		{Name: "timestamp", Type: FieldTypeInt64},
+		{Name: "id", Type: Int64},
+		{Name: "name", Type: String},
+		{Name: "data", Type: String},
+		{Name: "timestamp", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)

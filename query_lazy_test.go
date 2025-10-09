@@ -12,8 +12,8 @@ func TestLazyLoadingBasic(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	schema, err := NewSchema("users", []Field{
-		{Name: "name", Type: FieldTypeString},
-		{Name: "age", Type: FieldTypeInt64},
+		{Name: "name", Type: String},
+		{Name: "age", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -71,8 +71,8 @@ func TestLazyLoadingVsEagerLoading(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	schema, err := NewSchema("users", []Field{
-		{Name: "name", Type: FieldTypeString},
-		{Name: "age", Type: FieldTypeInt64},
+		{Name: "name", Type: String},
+		{Name: "age", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -151,9 +151,9 @@ func TestIndexQueryIsEager(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	schema, err := NewSchema("users", []Field{
-		{Name: "name", Type: FieldTypeString},
-		{Name: "email", Type: FieldTypeString, Indexed: true},
-		{Name: "age", Type: FieldTypeInt64},
+		{Name: "name", Type: String},
+		{Name: "email", Type: String, Indexed: true},
+		{Name: "age", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -236,9 +236,9 @@ func TestLazyLoadingWithConditions(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	schema, err := NewSchema("users", []Field{
-		{Name: "name", Type: FieldTypeString},
-		{Name: "age", Type: FieldTypeInt64},
-		{Name: "active", Type: FieldTypeBool},
+		{Name: "name", Type: String},
+		{Name: "age", Type: Int64},
+		{Name: "active", Type: Bool},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -314,8 +314,8 @@ func TestFirstDoesNotLoadAll(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	schema, err := NewSchema("users", []Field{
-		{Name: "name", Type: FieldTypeString},
-		{Name: "age", Type: FieldTypeInt64},
+		{Name: "name", Type: String},
+		{Name: "age", Type: Int64},
 	})
 	if err != nil {
 		t.Fatal(err)
