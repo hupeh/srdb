@@ -98,7 +98,9 @@ func (idx *SecondaryIndex) Build() error {
 	// 使用 B+Tree 写入器
 	writer := NewIndexBTreeWriter(idx.file, idx.metadata)
 
-	// 添加所有条目
+	// 写入内存中的所有条目
+	// 注意：这假设 valueToSeq 包含所有数据（包括从磁盘加载的）
+	// 对于增量更新场景，Get() 会合并内存和磁盘的结果
 	for value, seqs := range idx.valueToSeq {
 		writer.Add(value, seqs)
 	}
@@ -109,8 +111,25 @@ func (idx *SecondaryIndex) Build() error {
 		return fmt.Errorf("failed to build btree index: %w", err)
 	}
 
+	// 关闭旧的 btreeReader
+	if idx.btreeReader != nil {
+		idx.btreeReader.Close()
+	}
+
+	// 重新加载 btreeReader（读取刚写入的数据）
+	reader, err := NewIndexBTreeReader(idx.file)
+	if err != nil {
+		return fmt.Errorf("failed to reload btree reader: %w", err)
+	}
+
+	idx.btreeReader = reader
 	idx.useBTree = true
 	idx.ready = true
+
+	// 不清空 valueToSeq，保留所有数据在内存中
+	// 这样下次 Build() 时可以写入完整数据
+	// Get() 方法会合并内存和磁盘的结果（去重）
+
 	return nil
 }
 
@@ -197,7 +216,7 @@ func (idx *SecondaryIndex) loadJSON() error {
 	return nil
 }
 
-// Get 查询索引
+// Get 查询索引（优先查内存，然后查磁盘，合并结果）
 func (idx *SecondaryIndex) Get(value any) ([]int64, error) {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
@@ -208,18 +227,37 @@ func (idx *SecondaryIndex) Get(value any) ([]int64, error) {
 
 	key := fmt.Sprintf("%v", value)
 
-	// 如果使用 B+Tree，从 B+Tree 读取
-	if idx.useBTree && idx.btreeReader != nil {
-		return idx.btreeReader.Get(key)
+	// 收集所有匹配的 seqs（需要去重）
+	seqMap := make(map[int64]bool)
+
+	// 1. 先从内存 map 读取（包含最新的未持久化数据）
+	if memSeqs, exists := idx.valueToSeq[key]; exists {
+		for _, seq := range memSeqs {
+			seqMap[seq] = true
+		}
 	}
 
-	// 否则从内存 map 读取
-	seqs, exists := idx.valueToSeq[key]
-	if !exists {
+	// 2. 如果使用 B+Tree，从 B+Tree 读取（持久化的数据）
+	if idx.useBTree && idx.btreeReader != nil {
+		diskSeqs, err := idx.btreeReader.Get(key)
+		if err == nil && diskSeqs != nil {
+			for _, seq := range diskSeqs {
+				seqMap[seq] = true
+			}
+		}
+	}
+
+	// 3. 合并结果
+	if len(seqMap) == 0 {
 		return nil, nil
 	}
 
-	return seqs, nil
+	result := make([]int64, 0, len(seqMap))
+	for seq := range seqMap {
+		result = append(result, seq)
+	}
+
+	return result, nil
 }
 
 // IsReady 索引是否就绪

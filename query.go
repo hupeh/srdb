@@ -484,6 +484,14 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 		visited: make(map[int64]bool),
 	}
 
+	// 尝试使用索引优化查询
+	// 检查是否有可以使用索引的 Eq 条件
+	indexField, indexValue := qb.findIndexableCondition()
+	if indexField != "" {
+		// 使用索引查询
+		return qb.rowsWithIndex(rows, indexField, indexValue)
+	}
+
 	// 收集所有数据源的 keys 并全局排序
 	// 立即读取数据避免 compaction 期间文件被删除
 	keyToRow := make(map[int64]*SSTableRow) // 存储已读取的行数据
@@ -580,6 +588,63 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 		rows.cached = true
 		rows.cachedIndex = -1
 	}
+
+	return rows, nil
+}
+
+// findIndexableCondition 查找可以使用索引的条件（Eq 操作）
+func (qb *QueryBuilder) findIndexableCondition() (string, any) {
+	for _, cond := range qb.conds {
+		// 检查是否是 compare 类型且操作符是 "="
+		if cmp, ok := cond.(compare); ok && cmp.op == "=" {
+			// 检查该字段是否有索引
+			if idx, exists := qb.table.indexManager.GetIndex(cmp.field); exists && idx.IsReady() {
+				return cmp.field, cmp.right
+			}
+		}
+	}
+	return "", nil
+}
+
+// rowsWithIndex 使用索引查询数据
+func (qb *QueryBuilder) rowsWithIndex(rows *Rows, indexField string, indexValue any) (*Rows, error) {
+	// 获取索引
+	idx, exists := qb.table.indexManager.GetIndex(indexField)
+	if !exists {
+		return nil, fmt.Errorf("index on field %s not found", indexField)
+	}
+
+	// 从索引获取 seq 列表
+	seqs, err := idx.Get(indexValue)
+	if err != nil {
+		return nil, fmt.Errorf("index lookup failed: %w", err)
+	}
+
+	// 如果没有结果，返回空结果集
+	if len(seqs) == 0 {
+		rows.cached = true
+		rows.cachedIndex = -1
+		rows.cachedRows = []*SSTableRow{}
+		return rows, nil
+	}
+
+	// 根据 seq 列表获取数据
+	rows.cachedRows = make([]*SSTableRow, 0, len(seqs))
+	for _, seq := range seqs {
+		row, err := qb.table.Get(seq)
+		if err != nil {
+			continue // 跳过获取失败的记录
+		}
+
+		// 检查是否匹配所有其他条件（索引只能优化一个条件）
+		if qb.Match(row.Data) {
+			rows.cachedRows = append(rows.cachedRows, row)
+		}
+	}
+
+	// 使用缓存模式
+	rows.cached = true
+	rows.cachedIndex = -1
 
 	return rows, nil
 }
