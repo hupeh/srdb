@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "timestamp": 1760013696,
+  "checksum": "dab23ff2118dc2a790681dcc4e112b3377fd96414a30cdfa0ca98af5d41a271e",
+  "schema": {
+    "Name": "users",
+    "Fields": [
+      {
+        "Name": "name",
+        "Type": 2,
+        "Indexed": false,
+        "Comment": ""
+      },
+      {
+        "Name": "age",
+        "Type": 1,
+        "Indexed": false,
+        "Comment": ""
+      },
+      {
+        "Name": "email",
+        "Type": 2,
+        "Indexed": false,
+        "Comment": ""
+      },
+      {
+        "Name": "is_active",
+        "Type": 4,
+        "Indexed": false,
+        "Comment": ""
+      }
+    ]
+  }
+}

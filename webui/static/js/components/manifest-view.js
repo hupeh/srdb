@@ -132,11 +132,27 @@ export class ManifestView extends LitElement {
       }
 
       .file-name {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+
+      .file-name-text {
         font-family: 'Courier New', monospace;
         font-size: 13px;
         color: var(--text-primary);
         font-weight: 500;
-        margin-bottom: 8px;
+      }
+
+      .file-level-badge {
+        font-size: 11px;
+        padding: 2px 8px;
+        background: var(--primary-bg);
+        color: var(--primary);
+        border-radius: var(--radius-sm);
+        font-weight: 600;
+        font-family: 'Courier New', monospace;
       }
 
       .file-detail {
@@ -273,7 +289,10 @@ export class ManifestView extends LitElement {
             <div class="file-list">
               ${level.files.map(file => html`
                 <div class="file-item">
-                  <div class="file-name">${file.file_number}.sst</div>
+                  <div class="file-name">
+                    <span class="file-name-text">${file.file_number}.sst</span>
+                    <span class="file-level-badge">L${level.level}</span>
+                  </div>
                   <div class="file-detail">
                     <div class="file-detail-row">
                       <span>Size:</span>

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -203,8 +205,181 @@ func OpenTable(opts *TableOptions) (*Table, error) {
 	return table, nil
 }
 
-// Insert 插入数据
-func (t *Table) Insert(data map[string]any) error {
+// Insert 插入数据（支持单条或批量）
+// 支持的类型：
+//   - map[string]any: 单条数据
+//   - []map[string]any: 批量数据
+//   - *struct{}: 单个结构体指针
+//   - []struct{}: 结构体切片
+//   - []*struct{}: 结构体指针切片
+func (t *Table) Insert(data any) error {
+	// 1. 将输入转换为 []map[string]any
+	rows, err := t.normalizeInsertData(data)
+	if err != nil {
+		return err
+	}
+
+	// 2. 批量插入
+	return t.insertBatch(rows)
+}
+
+// normalizeInsertData 将各种输入格式转换为 []map[string]any
+func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
+	// 处理 nil
+	if data == nil {
+		return nil, fmt.Errorf("data cannot be nil")
+	}
+
+	// 获取反射值
+	val := reflect.ValueOf(data)
+	typ := reflect.TypeOf(data)
+
+	// 如果是指针，解引用
+	if typ.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return nil, fmt.Errorf("data pointer cannot be nil")
+		}
+		val = val.Elem()
+		typ = val.Type()
+	}
+
+	switch typ.Kind() {
+	case reflect.Map:
+		// map[string]any - 单条
+		m, ok := data.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("expected map[string]any, got %T", data)
+		}
+		return []map[string]any{m}, nil
+
+	case reflect.Slice:
+		// 检查切片元素类型
+		elemType := typ.Elem()
+
+		// []map[string]any
+		if elemType.Kind() == reflect.Map {
+			maps, ok := data.([]map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("expected []map[string]any, got %T", data)
+			}
+			return maps, nil
+		}
+
+		// []*struct{} 或 []struct{}
+		if elemType.Kind() == reflect.Ptr {
+			elemType = elemType.Elem()
+		}
+
+		if elemType.Kind() == reflect.Struct {
+			// 将每个结构体转换为 map
+			var rows []map[string]any
+			for i := 0; i < val.Len(); i++ {
+				elem := val.Index(i)
+				// 如果是指针，解引用
+				if elem.Kind() == reflect.Ptr {
+					if elem.IsNil() {
+						continue // 跳过 nil 指针
+					}
+					elem = elem.Elem()
+				}
+
+				m, err := t.structToMap(elem.Interface())
+				if err != nil {
+					return nil, fmt.Errorf("convert struct at index %d: %w", i, err)
+				}
+				rows = append(rows, m)
+			}
+			return rows, nil
+		}
+
+		return nil, fmt.Errorf("unsupported slice element type: %s", elemType.Kind())
+
+	case reflect.Struct:
+		// struct{} - 单个结构体
+		m, err := t.structToMap(data)
+		if err != nil {
+			return nil, err
+		}
+		return []map[string]any{m}, nil
+
+	default:
+		return nil, fmt.Errorf("unsupported data type: %T (kind: %s)", data, typ.Kind())
+	}
+}
+
+// structToMap 将结构体转换为 map[string]any
+func (t *Table) structToMap(v any) (map[string]any, error) {
+	val := reflect.ValueOf(v)
+	typ := reflect.TypeOf(v)
+
+	if typ.Kind() == reflect.Ptr {
+		val = val.Elem()
+		typ = val.Type()
+	}
+
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct, got %s", typ.Kind())
+	}
+
+	result := make(map[string]any)
+
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// 跳过未导出的字段
+		if !field.IsExported() {
+			continue
+		}
+
+		// 获取字段名
+		fieldName := field.Name
+		tag := field.Tag.Get("srdb")
+
+		// 跳过忽略的字段
+		if tag == "-" {
+			continue
+		}
+
+		// 解析 tag 获取字段名
+		if tag != "" {
+			parts := strings.Split(tag, ";")
+			if parts[0] != "" {
+				fieldName = parts[0]
+			} else {
+				// 使用 snake_case 转换
+				fieldName = camelToSnake(field.Name)
+			}
+		} else {
+			// 没有 tag，使用 snake_case 转换
+			fieldName = camelToSnake(field.Name)
+		}
+
+		// 获取字段值
+		fieldVal := val.Field(i)
+		result[fieldName] = fieldVal.Interface()
+	}
+
+	return result, nil
+}
+
+// insertBatch 批量插入数据
+func (t *Table) insertBatch(rows []map[string]any) error {
+	if len(rows) == 0 {
+		return nil
+	}
+
+	// 逐条插入
+	for _, data := range rows {
+		if err := t.insertSingle(data); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// insertSingle 插入单条数据
+func (t *Table) insertSingle(data map[string]any) error {
 	// 1. 验证 Schema
 	if err := t.schema.Validate(data); err != nil {
 		return NewError(ErrCodeSchemaValidationFailed, err)

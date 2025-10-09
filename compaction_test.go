@@ -560,3 +560,489 @@ func TestCompactionQueryOrder(t *testing.T) {
 		}
 	}
 }
+
+// TestPickerStageRotation 测试 Picker 的阶段轮换机制
+func TestPickerStageRotation(t *testing.T) {
+	// 创建临时目录
+	tmpDir := t.TempDir()
+	manifestDir := tmpDir
+
+	// 创建 VersionSet
+	versionSet, err := NewVersionSet(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer versionSet.Close()
+
+	// 创建 Picker
+	picker := NewPicker()
+
+	// 初始阶段应该是 L0
+	if stage := picker.GetCurrentStage(); stage != 0 {
+		t.Errorf("Initial stage should be 0 (L0), got %d", stage)
+	}
+
+	// 添加 L0 文件（触发 L0 compaction）
+	edit := NewVersionEdit()
+	for i := 0; i < 10; i++ {
+		edit.AddFile(&FileMetadata{
+			FileNumber: int64(i + 1),
+			Level:      0,
+			FileSize:   10 * 1024 * 1024, // 10MB each
+			MinKey:     int64(i * 100),
+			MaxKey:     int64((i+1)*100 - 1),
+			RowCount:   100,
+		})
+	}
+	edit.SetNextFileNumber(11)
+	err = versionSet.LogAndApply(edit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version := versionSet.GetCurrent()
+
+	// 第1次调用：应该返回 L0 任务，然后推进到 L1
+	t.Log("=== 第1次调用 PickCompaction ===")
+	tasks1 := picker.PickCompaction(version)
+	if len(tasks1) == 0 {
+		t.Error("Expected L0 tasks on first call")
+	}
+	for _, task := range tasks1 {
+		if task.Level != 0 {
+			t.Errorf("Expected L0 task, got L%d", task.Level)
+		}
+	}
+	if stage := picker.GetCurrentStage(); stage != 1 {
+		t.Errorf("After L0 tasks, stage should be 1 (L1), got %d", stage)
+	}
+	t.Logf("✓ Returned %d L0 tasks, stage advanced to L1", len(tasks1))
+
+	// 第2次调用：应该尝试 Stage 1 (L0-upgrade，没有大文件)
+	t.Log("=== 第2次调用 PickCompaction ===")
+	tasks2 := picker.PickCompaction(version)
+	if len(tasks2) == 0 {
+		t.Log("✓ Stage 1 (L0-upgrade) has no tasks")
+	}
+	// 此时 stage 应该已经循环（尝试了 Stage 1→2→3→0...）
+	if stage := picker.GetCurrentStage(); stage >= 0 {
+		t.Logf("After trying, current stage is %d", stage)
+	}
+
+	// 现在添加 L1 文件
+	edit2 := NewVersionEdit()
+	for i := 0; i < 20; i++ {
+		edit2.AddFile(&FileMetadata{
+			FileNumber: int64(100 + i + 1),
+			Level:      1,
+			FileSize:   20 * 1024 * 1024, // 20MB each
+			MinKey:     int64(i * 200),
+			MaxKey:     int64((i+1)*200 - 1),
+			RowCount:   200,
+		})
+	}
+	edit2.SetNextFileNumber(121)
+	err = versionSet.LogAndApply(edit2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version2 := versionSet.GetCurrent()
+
+	// 现在可能需要多次调用才能到达 Stage 2 (L1-upgrade)
+	// 因为要经过 Stage 1 (L0-upgrade) 和 Stage 0 (L0-merge)
+	t.Log("=== 多次调用 PickCompaction 直到找到 L1 任务 ===")
+	var tasks3 []*CompactionTask
+	for i := 0; i < 8; i++ { // 最多尝试两轮（4个阶段×2）
+		tasks3 = picker.PickCompaction(version2)
+		if len(tasks3) > 0 && tasks3[0].Level == 1 {
+			t.Logf("✓ Found %d L1 tasks after %d attempts", len(tasks3), i+1)
+			break
+		}
+	}
+	if len(tasks3) == 0 || tasks3[0].Level != 1 {
+		t.Error("Expected to find L1 tasks within 8 attempts")
+	}
+
+	t.Log("=== Stage rotation test passed ===")
+}
+
+// TestPickerStageWithMultipleLevels 测试多层级同时有任务时的阶段轮换
+func TestPickerStageWithMultipleLevels(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestDir := tmpDir
+
+	versionSet, err := NewVersionSet(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer versionSet.Close()
+
+	picker := NewPicker()
+
+	// 同时添加 L0、L1、L2 文件
+	edit := NewVersionEdit()
+
+	// L0 小文件: 5 files × 10MB = 50MB (应该触发 Stage 0: L0-merge)
+	for i := 0; i < 5; i++ {
+		edit.AddFile(&FileMetadata{
+			FileNumber: int64(i + 1),
+			Level:      0,
+			FileSize:   10 * 1024 * 1024,
+			MinKey:     int64(i * 100),
+			MaxKey:     int64((i+1)*100 - 1),
+			RowCount:   100,
+		})
+	}
+
+	// L0 大文件: 5 files × 40MB = 200MB (应该触发 Stage 1: L0-upgrade)
+	for i := 0; i < 5; i++ {
+		edit.AddFile(&FileMetadata{
+			FileNumber: int64(10 + i + 1),
+			Level:      0,
+			FileSize:   40 * 1024 * 1024,
+			MinKey:     int64((i + 5) * 100),
+			MaxKey:     int64((i+6)*100 - 1),
+			RowCount:   100,
+		})
+	}
+
+	// L1: 20 files × 20MB = 400MB (应该触发 Stage 2: L1-upgrade，256MB阈值)
+	for i := 0; i < 20; i++ {
+		edit.AddFile(&FileMetadata{
+			FileNumber: int64(100 + i + 1),
+			Level:      1,
+			FileSize:   20 * 1024 * 1024,
+			MinKey:     int64(i * 200),
+			MaxKey:     int64((i+1)*200 - 1),
+			RowCount:   200,
+		})
+	}
+
+	// L2: 10 files × 150MB = 1500MB (应该触发 Stage 3: L2-upgrade，1GB阈值)
+	for i := 0; i < 10; i++ {
+		edit.AddFile(&FileMetadata{
+			FileNumber: int64(200 + i + 1),
+			Level:      2,
+			FileSize:   150 * 1024 * 1024,
+			MinKey:     int64(i * 300),
+			MaxKey:     int64((i+1)*300 - 1),
+			RowCount:   300,
+		})
+	}
+
+	edit.SetNextFileNumber(301)
+	err = versionSet.LogAndApply(edit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version := versionSet.GetCurrent()
+
+	// 验证阶段按顺序执行：Stage 0→1→2→3→0→1→2→3
+	expectedStages := []struct {
+		stage int
+		name  string
+		level int
+	}{
+		{0, "L0-merge", 0},
+		{1, "L0-upgrade", 0},
+		{2, "L1-upgrade", 1},
+		{3, "L2-upgrade", 2},
+		{0, "L0-merge", 0},
+		{1, "L0-upgrade", 0},
+		{2, "L1-upgrade", 1},
+		{3, "L2-upgrade", 2},
+	}
+
+	for i, expected := range expectedStages {
+		t.Logf("=== 第%d次调用 PickCompaction (期望 Stage %d: %s) ===", i+1, expected.stage, expected.name)
+		tasks := picker.PickCompaction(version)
+
+		if len(tasks) == 0 {
+			t.Errorf("Call %d: Expected tasks from Stage %d (%s), got no tasks", i+1, expected.stage, expected.name)
+			continue
+		}
+
+		actualLevel := tasks[0].Level
+		if actualLevel != expected.level {
+			t.Errorf("Call %d: Expected L%d tasks, got L%d tasks", i+1, expected.level, actualLevel)
+		} else {
+			t.Logf("✓ Call %d: Got %d tasks from L%d (Stage %d: %s) as expected",
+				i+1, len(tasks), actualLevel, expected.stage, expected.name)
+		}
+	}
+
+	t.Log("=== Multi-level stage rotation test passed ===")
+}
+
+// TestPickL0MergeContinuity 测试 L0 合并任务的连续性
+func TestPickL0MergeContinuity(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestDir := tmpDir
+
+	versionSet, err := NewVersionSet(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer versionSet.Close()
+
+	picker := NewPicker()
+
+	// 创建混合大小的文件：小-大-小-小
+	// 这是触发 bug 的场景
+	edit := NewVersionEdit()
+
+	// 文件1: 29MB (小文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 1,
+		Level:      0,
+		FileSize:   29 * 1024 * 1024,
+		MinKey:     1,
+		MaxKey:     100,
+		RowCount:   100,
+	})
+
+	// 文件2: 36MB (大文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 2,
+		Level:      0,
+		FileSize:   36 * 1024 * 1024,
+		MinKey:     101,
+		MaxKey:     200,
+		RowCount:   100,
+	})
+
+	// 文件3: 8MB (小文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 3,
+		Level:      0,
+		FileSize:   8 * 1024 * 1024,
+		MinKey:     201,
+		MaxKey:     300,
+		RowCount:   100,
+	})
+
+	// 文件4: 15MB (小文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 4,
+		Level:      0,
+		FileSize:   15 * 1024 * 1024,
+		MinKey:     301,
+		MaxKey:     400,
+		RowCount:   100,
+	})
+
+	edit.SetNextFileNumber(5)
+	err = versionSet.LogAndApply(edit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version := versionSet.GetCurrent()
+
+	// 测试 Stage 0: L0 合并任务
+	t.Log("=== 测试 Stage 0: L0 合并 ===")
+	tasks := picker.pickL0MergeTasks(version)
+
+	if len(tasks) == 0 {
+		t.Fatal("Expected L0 merge tasks")
+	}
+
+	t.Logf("找到 %d 个合并任务", len(tasks))
+
+	// 验证任务：应该只有1个任务，包含文件3和文件4
+	// 文件1是单个小文件，不合并（len > 1 才合并）
+	// 文件2是大文件，跳过
+	// 文件3+文件4是连续的2个小文件，应该合并
+	if len(tasks) != 1 {
+		t.Errorf("Expected 1 task, got %d", len(tasks))
+		for i, task := range tasks {
+			t.Logf("Task %d: %d files", i+1, len(task.InputFiles))
+			for _, f := range task.InputFiles {
+				t.Logf("  - File %d", f.FileNumber)
+			}
+		}
+	}
+	task1 := tasks[0]
+	if len(task1.InputFiles) != 2 {
+		t.Errorf("Task 1: expected 2 files, got %d", len(task1.InputFiles))
+	}
+	if task1.InputFiles[0].FileNumber != 3 || task1.InputFiles[1].FileNumber != 4 {
+		t.Errorf("Task 1: expected files 3,4, got %d,%d",
+			task1.InputFiles[0].FileNumber, task1.InputFiles[1].FileNumber)
+	}
+	t.Logf("✓ 合并任务: 文件3+文件4 (连续的2个小文件)")
+	t.Logf("✓ 文件1 (单个小文件) 不合并，留给升级阶段")
+
+	// 验证 seq 范围连续性
+	// 任务1: seq 201-400 (文件3+文件4)
+	// 文件1（seq 1-100, 单个小文件）留给升级阶段
+	// 文件2（seq 101-200, 大文件）留给 Stage 1
+	if task1.InputFiles[0].MinKey != 201 || task1.InputFiles[1].MaxKey != 400 {
+		t.Errorf("Task 1 seq range incorrect: [%d, %d]",
+			task1.InputFiles[0].MinKey, task1.InputFiles[1].MaxKey)
+	}
+	t.Logf("✓ Seq 范围正确：任务1 [201-400]")
+
+	// 测试 Stage 1: L0 升级任务
+	t.Log("=== 测试 Stage 1: L0 升级 ===")
+	upgradeTasks := picker.pickL0UpgradeTasks(version)
+
+	if len(upgradeTasks) == 0 {
+		t.Fatal("Expected L0 upgrade tasks")
+	}
+
+	// 应该有1个任务：以文件2（大文件）为中心，搭配周围的小文件
+	// 文件2向左收集文件1，向右收集文件3和文件4
+	// 总共：文件1 (29MB) + 文件2 (36MB) + 文件3 (8MB) + 文件4 (15MB) = 88MB
+	if len(upgradeTasks) != 1 {
+		t.Errorf("Expected 1 upgrade task, got %d", len(upgradeTasks))
+	}
+	upgradeTask := upgradeTasks[0]
+
+	// 应该包含所有4个文件
+	if len(upgradeTask.InputFiles) != 4 {
+		t.Errorf("Upgrade task: expected 4 files, got %d", len(upgradeTask.InputFiles))
+		for i, f := range upgradeTask.InputFiles {
+			t.Logf("  File %d: %d", i+1, f.FileNumber)
+		}
+	}
+
+	// 验证文件顺序：1, 2, 3, 4
+	expectedFiles := []int64{1, 2, 3, 4}
+	for i, expected := range expectedFiles {
+		if upgradeTask.InputFiles[i].FileNumber != expected {
+			t.Errorf("Upgrade task file %d: expected %d, got %d",
+				i, expected, upgradeTask.InputFiles[i].FileNumber)
+		}
+	}
+
+	if upgradeTask.OutputLevel != 1 {
+		t.Errorf("Upgrade task: expected OutputLevel 1, got %d", upgradeTask.OutputLevel)
+	}
+	t.Logf("✓ 升级任务: 文件1+文件2+文件3+文件4 (以大文件为中心，搭配周围小文件) → L1")
+
+	t.Log("=== 连续性测试通过 ===")
+}
+
+// TestPickL0UpgradeContinuity 测试 L0 升级任务的连续性
+func TestPickL0UpgradeContinuity(t *testing.T) {
+	tmpDir := t.TempDir()
+	manifestDir := tmpDir
+
+	versionSet, err := NewVersionSet(manifestDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer versionSet.Close()
+
+	picker := NewPicker()
+
+	// 创建混合大小的文件：大-小-大-大
+	edit := NewVersionEdit()
+
+	// 文件1: 40MB (大文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 1,
+		Level:      0,
+		FileSize:   40 * 1024 * 1024,
+		MinKey:     1,
+		MaxKey:     100,
+		RowCount:   100,
+	})
+
+	// 文件2: 20MB (小文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 2,
+		Level:      0,
+		FileSize:   20 * 1024 * 1024,
+		MinKey:     101,
+		MaxKey:     200,
+		RowCount:   100,
+	})
+
+	// 文件3: 50MB (大文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 3,
+		Level:      0,
+		FileSize:   50 * 1024 * 1024,
+		MinKey:     201,
+		MaxKey:     300,
+		RowCount:   100,
+	})
+
+	// 文件4: 45MB (大文件)
+	edit.AddFile(&FileMetadata{
+		FileNumber: 4,
+		Level:      0,
+		FileSize:   45 * 1024 * 1024,
+		MinKey:     301,
+		MaxKey:     400,
+		RowCount:   100,
+	})
+
+	edit.SetNextFileNumber(5)
+	err = versionSet.LogAndApply(edit)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	version := versionSet.GetCurrent()
+
+	// 测试 L0 升级任务
+	t.Log("=== 测试 L0 升级任务连续性 ===")
+	tasks := picker.pickL0UpgradeTasks(version)
+
+	if len(tasks) == 0 {
+		t.Fatal("Expected L0 upgrade tasks")
+	}
+
+	t.Logf("找到 %d 个升级任务", len(tasks))
+
+	// 验证任务1：应该包含所有4个文件（以大文件为锚点，搭配周围文件）
+	// 文件1（大文件）作为锚点 → 向左无文件 → 向右收集文件2（小）+文件3（大）+文件4（大）
+	// 总大小：40+20+50+45 = 155MB < 256MB，符合 L1 限制
+	task1 := tasks[0]
+	expectedFileCount := 4
+	if len(task1.InputFiles) != expectedFileCount {
+		t.Errorf("Task 1: expected %d files, got %d", expectedFileCount, len(task1.InputFiles))
+		for i, f := range task1.InputFiles {
+			t.Logf("  File %d: %d", i+1, f.FileNumber)
+		}
+	}
+
+	// 验证文件顺序：1, 2, 3, 4
+	expectedFiles := []int64{1, 2, 3, 4}
+	for i, expected := range expectedFiles {
+		if i >= len(task1.InputFiles) {
+			break
+		}
+		if task1.InputFiles[i].FileNumber != expected {
+			t.Errorf("Task 1 file %d: expected %d, got %d",
+				i, expected, task1.InputFiles[i].FileNumber)
+		}
+	}
+	t.Logf("✓ Task 1: 文件1+文件2+文件3+文件4 (以大文件为锚点，搭配周围文件，总155MB < 256MB)")
+
+	// 只应该有1个任务（所有文件都被收集了）
+	if len(tasks) != 1 {
+		t.Errorf("Expected 1 task (all files collected), got %d", len(tasks))
+		for i, task := range tasks {
+			t.Logf("Task %d: %d files", i+1, len(task.InputFiles))
+			for _, f := range task.InputFiles {
+				t.Logf("  - File %d", f.FileNumber)
+			}
+		}
+	}
+
+	// 验证所有任务的 OutputLevel 都是 1
+	for i, task := range tasks {
+		if task.OutputLevel != 1 {
+			t.Errorf("Task %d: expected OutputLevel 1, got %d", i+1, task.OutputLevel)
+		}
+	}
+	t.Logf("✓ 所有任务都升级到 L1")
+
+	t.Log("=== 升级任务连续性测试通过 ===")
+}

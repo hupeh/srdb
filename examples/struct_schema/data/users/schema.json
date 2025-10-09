@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "timestamp": 1760013049,
+  "checksum": "fad0aaaa6fc5b94364c0c0b07a7567f71e8bb4f8ed8456c1954cffa7538a6a42",
+  "schema": {
+    "Name": "users",
+    "Fields": [
+      {
+        "Name": "name",
+        "Type": 2,
+        "Indexed": true,
+        "Comment": "用户名"
+      },
+      {
+        "Name": "age",
+        "Type": 1,
+        "Indexed": false,
+        "Comment": "年龄"
+      },
+      {
+        "Name": "email",
+        "Type": 2,
+        "Indexed": true,
+        "Comment": "邮箱"
+      },
+      {
+        "Name": "score",
+        "Type": 3,
+        "Indexed": false,
+        "Comment": "分数"
+      },
+      {
+        "Name": "is_active",
+        "Type": 4,
+        "Indexed": false,
+        "Comment": "是否激活"
+      }
+    ]
+  }
+}

@@ -1844,3 +1844,472 @@ func TestTableCleanAndQuery(t *testing.T) {
 		t.Errorf("Expected 1 row, got %d", count)
 	}
 }
+
+// TestInsertMap 测试插入 map[string]any
+func TestInsertMap(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertMap")
+	defer os.RemoveAll(tmpDir)
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 插入单个 map
+	err = table.Insert(map[string]any{
+		"name": "Alice",
+		"age":  int64(25),
+	})
+	if err != nil {
+		t.Fatalf("Insert map failed: %v", err)
+	}
+
+	// 验证
+	row, err := table.Get(1)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if row.Data["name"] != "Alice" {
+		t.Errorf("Expected name=Alice, got %v", row.Data["name"])
+	}
+
+	t.Log("✓ Insert map test passed")
+}
+
+// TestInsertMapSlice 测试插入 []map[string]any
+func TestInsertMapSlice(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertMapSlice")
+	defer os.RemoveAll(tmpDir)
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 批量插入 maps
+	err = table.Insert([]map[string]any{
+		{"name": "Alice", "age": int64(25)},
+		{"name": "Bob", "age": int64(30)},
+		{"name": "Charlie", "age": int64(35)},
+	})
+	if err != nil {
+		t.Fatalf("Insert map slice failed: %v", err)
+	}
+
+	// 验证
+	row1, _ := table.Get(1)
+	row2, _ := table.Get(2)
+	row3, _ := table.Get(3)
+
+	if row1.Data["name"] != "Alice" || row2.Data["name"] != "Bob" || row3.Data["name"] != "Charlie" {
+		t.Errorf("Data mismatch")
+	}
+
+	t.Log("✓ Insert map slice test passed (3 rows)")
+}
+
+// TestInsertStruct 测试插入单个结构体
+func TestInsertStruct(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertStruct")
+	defer os.RemoveAll(tmpDir)
+
+	type User struct {
+		Name  string `srdb:"name"`
+		Age   int64  `srdb:"age"`
+		Email string `srdb:"email"`
+	}
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+		{Name: "email", Type: FieldTypeString},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 插入单个结构体
+	user := User{
+		Name:  "Alice",
+		Age:   25,
+		Email: "alice@example.com",
+	}
+
+	err = table.Insert(user)
+	if err != nil {
+		t.Fatalf("Insert struct failed: %v", err)
+	}
+
+	// 验证
+	row, err := table.Get(1)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if row.Data["name"] != "Alice" {
+		t.Errorf("Expected name=Alice, got %v", row.Data["name"])
+	}
+	if row.Data["email"] != "alice@example.com" {
+		t.Errorf("Expected email=alice@example.com, got %v", row.Data["email"])
+	}
+
+	t.Log("✓ Insert struct test passed")
+}
+
+// TestInsertStructPointer 测试插入结构体指针
+func TestInsertStructPointer(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertStructPointer")
+	defer os.RemoveAll(tmpDir)
+
+	type User struct {
+		Name  string `srdb:"name"`
+		Age   int64  `srdb:"age"`
+		Email string `srdb:"email"`
+	}
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+		{Name: "email", Type: FieldTypeString},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 插入结构体指针
+	user := &User{
+		Name:  "Bob",
+		Age:   30,
+		Email: "bob@example.com",
+	}
+
+	err = table.Insert(user)
+	if err != nil {
+		t.Fatalf("Insert struct pointer failed: %v", err)
+	}
+
+	// 验证
+	row, err := table.Get(1)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if row.Data["name"] != "Bob" {
+		t.Errorf("Expected name=Bob, got %v", row.Data["name"])
+	}
+
+	t.Log("✓ Insert struct pointer test passed")
+}
+
+// TestInsertStructSlice 测试插入结构体切片
+func TestInsertStructSlice(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertStructSlice")
+	defer os.RemoveAll(tmpDir)
+
+	type User struct {
+		Name string `srdb:"name"`
+		Age  int64  `srdb:"age"`
+	}
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 批量插入结构体切片
+	users := []User{
+		{Name: "Alice", Age: 25},
+		{Name: "Bob", Age: 30},
+		{Name: "Charlie", Age: 35},
+	}
+
+	err = table.Insert(users)
+	if err != nil {
+		t.Fatalf("Insert struct slice failed: %v", err)
+	}
+
+	// 验证
+	row1, _ := table.Get(1)
+	row2, _ := table.Get(2)
+	row3, _ := table.Get(3)
+
+	if row1.Data["name"] != "Alice" || row2.Data["name"] != "Bob" || row3.Data["name"] != "Charlie" {
+		t.Errorf("Data mismatch")
+	}
+
+	t.Log("✓ Insert struct slice test passed (3 rows)")
+}
+
+// TestInsertStructPointerSlice 测试插入结构体指针切片
+func TestInsertStructPointerSlice(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertStructPointerSlice")
+	defer os.RemoveAll(tmpDir)
+
+	type User struct {
+		Name string `srdb:"name"`
+		Age  int64  `srdb:"age"`
+	}
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 批量插入结构体指针切片
+	users := []*User{
+		{Name: "Alice", Age: 25},
+		{Name: "Bob", Age: 30},
+		nil, // 测试 nil 指针会被跳过
+		{Name: "Charlie", Age: 35},
+	}
+
+	err = table.Insert(users)
+	if err != nil {
+		t.Fatalf("Insert struct pointer slice failed: %v", err)
+	}
+
+	// 验证（应该只有 3 条记录，nil 被跳过）
+	row1, _ := table.Get(1)
+	row2, _ := table.Get(2)
+	row3, _ := table.Get(3)
+
+	if row1.Data["name"] != "Alice" || row2.Data["name"] != "Bob" || row3.Data["name"] != "Charlie" {
+		t.Errorf("Data mismatch")
+	}
+
+	t.Log("✓ Insert struct pointer slice test passed (3 rows, nil skipped)")
+}
+
+// TestInsertWithSnakeCase 测试结构体自动 snake_case 转换
+func TestInsertWithSnakeCase(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertWithSnakeCase")
+	defer os.RemoveAll(tmpDir)
+
+	type User struct {
+		UserName     string `srdb:";comment:用户名"` // 没有指定字段名，应该自动转为 user_name
+		EmailAddress string // 没有 tag，应该自动转为 email_address
+		IsActive     bool   // 应该自动转为 is_active
+	}
+
+	schema := NewSchema("users", []Field{
+		{Name: "user_name", Type: FieldTypeString, Comment: "用户名"},
+		{Name: "email_address", Type: FieldTypeString},
+		{Name: "is_active", Type: FieldTypeBool},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 插入结构体
+	user := User{
+		UserName:     "Alice",
+		EmailAddress: "alice@example.com",
+		IsActive:     true,
+	}
+
+	err = table.Insert(user)
+	if err != nil {
+		t.Fatalf("Insert failed: %v", err)
+	}
+
+	// 验证字段名是否正确转换
+	row, err := table.Get(1)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+
+	if row.Data["user_name"] != "Alice" {
+		t.Errorf("Expected user_name=Alice, got %v", row.Data["user_name"])
+	}
+	if row.Data["email_address"] != "alice@example.com" {
+		t.Errorf("Expected email_address=alice@example.com, got %v", row.Data["email_address"])
+	}
+	if row.Data["is_active"] != true {
+		t.Errorf("Expected is_active=true, got %v", row.Data["is_active"])
+	}
+
+	t.Log("✓ Insert with snake_case test passed")
+}
+
+// TestInsertInvalidType 测试插入不支持的类型
+func TestInsertInvalidType(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertInvalidType")
+	defer os.RemoveAll(tmpDir)
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 尝试插入不支持的类型
+	err = table.Insert(123) // int 类型
+	if err == nil {
+		t.Errorf("Expected error for invalid type, got nil")
+	}
+
+	err = table.Insert("string") // string 类型
+	if err == nil {
+		t.Errorf("Expected error for invalid type, got nil")
+	}
+
+	err = table.Insert(nil) // nil
+	if err == nil {
+		t.Errorf("Expected error for nil, got nil")
+	}
+
+	t.Log("✓ Insert invalid type test passed")
+}
+
+// TestInsertEmptySlice 测试插入空切片
+func TestInsertEmptySlice(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestInsertEmptySlice")
+	defer os.RemoveAll(tmpDir)
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 插入空切片
+	err = table.Insert([]map[string]any{})
+	if err != nil {
+		t.Errorf("Expected nil error for empty slice, got %v", err)
+	}
+
+	// 验证没有数据
+	_, err = table.Get(1)
+	if err == nil {
+		t.Errorf("Expected error for non-existent row")
+	}
+
+	t.Log("✓ Insert empty slice test passed")
+}
+
+// TestBatchInsertPerformance 测试批量插入性能
+func TestBatchInsertPerformance(t *testing.T) {
+	tmpDir, _ := os.MkdirTemp("", "TestBatchInsertPerformance")
+	defer os.RemoveAll(tmpDir)
+
+	schema := NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString},
+		{Name: "age", Type: FieldTypeInt64},
+	})
+
+	table, err := OpenTable(&TableOptions{
+		Dir:    tmpDir,
+		Name:   schema.Name,
+		Fields: schema.Fields,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer table.Close()
+
+	// 准备1000条数据
+	batchSize := 1000
+	data := make([]map[string]any, batchSize)
+	for i := 0; i < batchSize; i++ {
+		data[i] = map[string]any{
+			"name": "User" + string(rune(i)),
+			"age":  int64(20 + i%50),
+		}
+	}
+
+	// 批量插入
+	err = table.Insert(data)
+	if err != nil {
+		t.Fatalf("Batch insert failed: %v", err)
+	}
+
+	// 验证数量
+	row, err := table.Get(int64(batchSize))
+	if err != nil {
+		t.Fatalf("Get last row failed: %v", err)
+	}
+
+	if row.Seq != int64(batchSize) {
+		t.Errorf("Expected seq=%d, got %d", batchSize, row.Seq)
+	}
+
+	t.Logf("✓ Batch insert performance test passed (%d rows)", batchSize)
+}

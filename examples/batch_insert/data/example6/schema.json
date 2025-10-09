@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "timestamp": 1760013696,
+  "checksum": "36398ae9f0d772f19a24dd8562fde01665890335416e4951808c6b050d251b43",
+  "schema": {
+    "Name": "products",
+    "Fields": [
+      {
+        "Name": "product_id",
+        "Type": 2,
+        "Indexed": false,
+        "Comment": "产品ID"
+      },
+      {
+        "Name": "product_name",
+        "Type": 2,
+        "Indexed": false,
+        "Comment": "产品名称"
+      },
+      {
+        "Name": "price",
+        "Type": 3,
+        "Indexed": false,
+        "Comment": "价格"
+      },
+      {
+        "Name": "in_stock",
+        "Type": 4,
+        "Indexed": false,
+        "Comment": "是否有货"
+      }
+    ]
+  }
+}

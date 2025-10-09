@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -48,12 +49,204 @@ type Schema struct {
 	Fields []Field // 字段列表
 }
 
-// New 创建 Schema
+// NewSchema 创建 Schema
 func NewSchema(name string, fields []Field) *Schema {
 	return &Schema{
 		Name:   name,
 		Fields: fields,
 	}
+}
+
+// StructToFields 从 Go 结构体生成 Field 列表
+//
+// 支持的 struct tag 格式：
+//   - `srdb:"name"` - 指定字段名（默认使用 snake_case 转换）
+//   - `srdb:"name;indexed"` - 指定字段名并标记为索引
+//   - `srdb:"name;indexed;comment:用户名"` - 完整格式（字段名;索引标记;注释）
+//   - `srdb:"-"` - 忽略该字段
+//
+// Tag 格式说明：
+//   - 使用分号 `;` 分隔不同的部分
+//   - 第一部分是字段名（可选，默认使用 snake_case 转换结构体字段名）
+//   - `indexed` 标记该字段需要索引
+//   - `comment:注释内容` 指定字段注释
+//
+// 默认字段名转换示例：
+//   - UserName -> user_name
+//   - EmailAddress -> email_address
+//   - IsActive -> is_active
+//
+// 类型映射：
+//   - int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8 -> FieldTypeInt64
+//   - string -> FieldTypeString
+//   - float64, float32 -> FieldTypeFloat
+//   - bool -> FieldTypeBool
+//
+// 示例：
+//   type User struct {
+//       Name  string `srdb:"name;indexed;comment:用户名"`
+//       Age   int64  `srdb:"age;comment:年龄"`
+//       Email string `srdb:"email;indexed;comment:邮箱"`
+//   }
+//   fields, err := StructToFields(User{})
+//
+// 参数：
+//   - v: 结构体实例或指针
+//
+// 返回：
+//   - []Field: 字段列表
+//   - error: 错误信息
+func StructToFields(v any) ([]Field, error) {
+	// 获取类型
+	typ := reflect.TypeOf(v)
+	if typ == nil {
+		return nil, fmt.Errorf("invalid type: nil")
+	}
+
+	// 如果是指针，获取其指向的类型
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
+
+	// 必须是结构体
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct, got %s", typ.Kind())
+	}
+
+	var fields []Field
+
+	// 遍历结构体字段
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// 跳过未导出的字段
+		if !field.IsExported() {
+			continue
+		}
+
+		// 解析 srdb tag
+		tag := field.Tag.Get("srdb")
+		if tag == "-" {
+			// 忽略该字段
+			continue
+		}
+
+		// 解析字段名、索引标记和注释
+		fieldName := camelToSnake(field.Name) // 默认使用 snake_case 字段名
+		indexed := false
+		comment := ""
+
+		if tag != "" {
+			// 使用分号分隔各部分
+			parts := strings.Split(tag, ";")
+
+			for idx, part := range parts {
+				part = strings.TrimSpace(part)
+
+				if idx == 0 && part != "" {
+					// 第一部分是字段名
+					fieldName = part
+				} else if part == "indexed" {
+					// indexed 标记
+					indexed = true
+				} else if strings.HasPrefix(part, "comment:") {
+					// comment:注释内容
+					comment = strings.TrimPrefix(part, "comment:")
+				}
+			}
+		}
+
+		// 映射 Go 类型到 FieldType
+		fieldType, err := goTypeToFieldType(field.Type)
+		if err != nil {
+			return nil, fmt.Errorf("field %s: %w", field.Name, err)
+		}
+
+		fields = append(fields, Field{
+			Name:    fieldName,
+			Type:    fieldType,
+			Indexed: indexed,
+			Comment: comment,
+		})
+	}
+
+	if len(fields) == 0 {
+		return nil, fmt.Errorf("no exported fields found in struct")
+	}
+
+	return fields, nil
+}
+
+// goTypeToFieldType 将 Go 类型映射到 FieldType
+func goTypeToFieldType(typ reflect.Type) (FieldType, error) {
+	switch typ.Kind() {
+	case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8,
+		reflect.Uint, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8:
+		return FieldTypeInt64, nil
+	case reflect.String:
+		return FieldTypeString, nil
+	case reflect.Float64, reflect.Float32:
+		return FieldTypeFloat, nil
+	case reflect.Bool:
+		return FieldTypeBool, nil
+	default:
+		return 0, fmt.Errorf("unsupported type: %s", typ.Kind())
+	}
+}
+
+// camelToSnake 将驼峰命名转换为 snake_case
+//
+// 示例：
+//   - UserName -> user_name
+//   - EmailAddress -> email_address
+//   - IsActive -> is_active
+//   - HTTPServer -> http_server
+//   - ID -> id
+func camelToSnake(s string) string {
+	var result strings.Builder
+	result.Grow(len(s) + 5) // 预分配空间
+
+	for i, r := range s {
+		// 如果是大写字母
+		if r >= 'A' && r <= 'Z' {
+			// 不是第一个字符，并且前一个字符不是大写，需要添加下划线
+			if i > 0 {
+				// 检查是否需要添加下划线
+				// 规则：
+				// 1. 前一个字符是小写字母 -> 添加下划线
+				// 2. 当前是大写，后一个是小写（处理 HTTPServer -> http_server）-> 添加下划线
+				prevChar := rune(s[i-1])
+				needUnderscore := false
+
+				if prevChar >= 'a' && prevChar <= 'z' {
+					// 前一个是小写字母
+					needUnderscore = true
+				} else if prevChar >= 'A' && prevChar <= 'Z' {
+					// 前一个是大写字母，检查后一个
+					if i+1 < len(s) {
+						nextChar := rune(s[i+1])
+						if nextChar >= 'a' && nextChar <= 'z' {
+							// 后一个是小写字母，说明是新单词开始
+							needUnderscore = true
+						}
+					}
+				} else {
+					// 前一个是数字或其他字符
+					needUnderscore = true
+				}
+
+				if needUnderscore {
+					result.WriteRune('_')
+				}
+			}
+			// 转换为小写
+			result.WriteRune(r + 32) // 'A' -> 'a' 的 ASCII 差值是 32
+		} else {
+			result.WriteRune(r)
+		}
+	}
+
+	return result.String()
 }
 
 // GetField 获取字段定义
