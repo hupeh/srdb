@@ -11,6 +11,17 @@
             rel="stylesheet"
         />
         <link rel="stylesheet" href="/static/css/styles.css" />
+        
+        <!-- Import Map for Lit and local modules -->
+        <script type="importmap">
+        {
+            "imports": {
+                "lit": "https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js",
+                "lit/": "https://cdn.jsdelivr.net/gh/lit/dist@3/",
+                "~/": "/static/js/"
+            }
+        }
+        </script>
     </head>
     <body>
         <!-- 应用容器 -->
@@ -20,6 +31,6 @@
         <srdb-modal-dialog></srdb-modal-dialog>
 
         <!-- 加载 Lit 组件 -->
-        <script type="module" src="/static/js/app.js"></script>
+        <script type="module" src="/static/js/main.js"></script>
     </body>
 </html>

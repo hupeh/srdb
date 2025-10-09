@@ -1,13 +1,14 @@
-import './components/app.js';
-import './components/table-list.js';
-import './components/table-view.js';
-import './components/modal-dialog.js';
-import './components/theme-toggle.js';
-import './components/badge.js';
-import './components/field-icon.js';
-import './components/data-view.js';
-import './components/manifest-view.js';
-import './components/page-header.js';
+import '~/components/app.js';
+import '~/components/table-list.js';
+import '~/components/table-view.js';
+import '~/components/modal-dialog.js';
+import '~/components/theme-toggle.js';
+import '~/components/badge.js';
+import '~/components/field-icon.js';
+import '~/components/data-view.js';
+import '~/components/manifest-view.js';
+import '~/components/page-header.js';
+import { tableAPI } from '~/common/api.js';
 
 class App {
   constructor() {
@@ -78,10 +79,7 @@ class App {
 
   async showRowDetail(tableName, seq) {
     try {
-      const response = await fetch(`/api/tables/${tableName}/data/${seq}`);
-      if (!response.ok) throw new Error('Failed to load row detail');
-      
-      const data = await response.json();
+      const data = await tableAPI.getRow(tableName, seq);
       const content = JSON.stringify(data, null, 2);
       
       this.modal.title = `Row Detail - Seq: ${seq}`;

@@ -1,10 +1,9 @@
-import { LitElement, html, css, svg } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { LitElement, html, css } from 'lit';
 
 export class FieldIcon extends LitElement {
   static properties = {
     indexed: { type: Boolean }
   };
-
   static styles = css`
     :host {
       display: inline-flex;

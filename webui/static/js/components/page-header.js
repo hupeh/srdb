@@ -1,5 +1,5 @@
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { sharedStyles, cssVariables } from '../styles/shared-styles.js';
+import { LitElement, html, css } from 'lit';
+import { sharedStyles, cssVariables } from '~/common/shared-styles.js';
 
 export class PageHeader extends LitElement {
   static properties = {
@@ -247,11 +247,11 @@ export class PageHeader extends LitElement {
         >
           <span>Data</span>
         </button>
-        <button 
+        <button
           class="view-tab ${this.view === 'manifest' ? 'active' : ''}"
           @click=${() => this.switchView('manifest')}
         >
-          <span>Manifest / LSM-Tree</span>
+          <span>Manifest / Storage Layers</span>
         </button>
         <button class="refresh-btn" @click=${this.refreshView} title="Refresh current view">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

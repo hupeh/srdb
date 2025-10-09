@@ -1,5 +1,5 @@
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { sharedStyles } from '../styles/shared-styles.js';
+import { LitElement, html, css } from 'lit';
+import { sharedStyles } from '~/common/shared-styles.js';
 
 export class ThemeToggle extends LitElement {
   static properties = {

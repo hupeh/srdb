@@ -16,7 +16,7 @@ import (
 // FileMetadata SST 文件元数据
 type FileMetadata struct {
 	FileNumber int64 // 文件编号
-	Level      int   // 所在层级 (0-6)
+	Level      int   // 所在层级 (0-3)
 	FileSize   int64 // 文件大小
 	MinKey     int64 // 最小 key
 	MaxKey     int64 // 最大 key
@@ -24,12 +24,12 @@ type FileMetadata struct {
 }
 
 const (
-	NumLevels = 7 // L0-L6
+	NumLevels = 4 // L0-L3
 )
 
 // Version 数据库的一个版本快照
 type Version struct {
-	// 分层存储 SST 文件 (L0-L6)
+	// 分层存储 SST 文件 (L0-L3)
 	Levels [NumLevels][]*FileMetadata
 
 	// 下一个文件编号

@@ -1,5 +1,6 @@
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { sharedStyles, cssVariables } from '../styles/shared-styles.js';
+import { LitElement, html, css } from 'lit';
+import { sharedStyles, cssVariables } from '~/common/shared-styles.js';
+import { tableAPI } from '~/common/api.js';
 
 export class TableView extends LitElement {
   static properties = {
@@ -127,13 +128,20 @@ export class TableView extends LitElement {
     
     try {
       // Load schema
-      const schemaResponse = await fetch(`/api/tables/${this.tableName}/schema`);
-      if (!schemaResponse.ok) throw new Error('Failed to load schema');
-      this.schema = await schemaResponse.json();
+      this.schema = await tableAPI.getSchema(this.tableName);
       
-      // Initialize selected columns (all by default)
+      // Initialize selected columns from localStorage or all by default
       if (this.schema.fields) {
-        this.selectedColumns = this.schema.fields.map(f => f.name);
+        const saved = this.loadSelectedColumns();
+        if (saved && saved.length > 0) {
+          // 验证保存的列是否仍然存在于当前 schema 中
+          const validColumns = saved.filter(col => 
+            this.schema.fields.some(field => field.name === col)
+          );
+          this.selectedColumns = validColumns.length > 0 ? validColumns : this.schema.fields.map(f => f.name);
+        } else {
+          this.selectedColumns = this.schema.fields.map(f => f.name);
+        }
       }
 
       if (this.view === 'data') {
@@ -149,22 +157,26 @@ export class TableView extends LitElement {
   }
 
   async loadTableData() {
-    const selectParam = this.selectedColumns.join(',');
-    const url = `/api/tables/${this.tableName}/data?page=${this.page}&pageSize=${this.pageSize}&select=${selectParam}`;
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to load table data');
-    this.tableData = await response.json();
+    this.tableData = await tableAPI.getData(this.tableName, {
+      page: this.page,
+      pageSize: this.pageSize,
+      select: this.selectedColumns.join(',')
+    });
   }
 
   async loadManifestData() {
-    const response = await fetch(`/api/tables/${this.tableName}/manifest`);
-    if (!response.ok) throw new Error('Failed to load manifest data');
-    this.manifestData = await response.json();
+    this.manifestData = await tableAPI.getManifest(this.tableName);
   }
 
   switchView(newView) {
     this.view = newView;
+  }
+
+  loadSelectedColumns() {
+    if (!this.tableName) return null;
+    const key = `srdb_columns_${this.tableName}`;
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : null;
   }
 
   toggleColumn(columnName) {

@@ -948,10 +948,10 @@ func TestTableWithCompaction(t *testing.T) {
 	// 获取 Level 统计信息
 	levelStats := table.compactionManager.GetLevelStats()
 	for _, stat := range levelStats {
-		level := stat["level"].(int)
-		fileCount := stat["file_count"].(int)
-		totalSize := stat["total_size"].(int64)
-		score := stat["score"].(float64)
+		level := stat.Level
+		fileCount := stat.FileCount
+		totalSize := stat.TotalSize
+		score := stat.Score
 
 		if fileCount > 0 {
 			t.Logf("L%d: %d files, %d bytes, score: %.2f", level, fileCount, totalSize, score)

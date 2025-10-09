@@ -143,12 +143,14 @@ func TestCompactionBasic(t *testing.T) {
 		t.Errorf("Expected L0 compaction, got L%d", task.Level)
 	}
 
-	if task.OutputLevel != 1 {
-		t.Errorf("Expected output to L1, got L%d", task.OutputLevel)
+	// 注意：L0 compaction 任务的 OutputLevel 设为 0（建议层级）
+	// 实际层级由 determineLevel 根据合并后的文件大小决定
+	if task.OutputLevel != 0 {
+		t.Errorf("Expected output to L0 (suggested), got L%d", task.OutputLevel)
 	}
 
 	t.Logf("Found %d compaction tasks", len(tasks))
-	t.Logf("First task: L%d -> L%d, %d files", task.Level, task.OutputLevel, len(task.InputFiles))
+	t.Logf("First task: L%d -> L%d, %d files (determineLevel will decide actual level)", task.Level, task.OutputLevel, len(task.InputFiles))
 
 	// 清理
 	reader1.Close()
@@ -193,12 +195,18 @@ func TestPickerLevelScore(t *testing.T) {
 
 	// 计算 L0 的得分
 	score := picker.GetLevelScore(version, 0)
-	t.Logf("L0 score: %.2f (files: %d, limit: %d)", score, version.GetLevelFileCount(0), picker.levelFileLimits[0])
 
-	// L0 有 3 个文件，限制是 4，得分应该是 0.75
-	expectedScore := 3.0 / 4.0
+	// L0 有 3 个文件，每个 1MB，总共 3MB
+	// 下一级（L1）的限制是 256MB
+	// 得分应该是 3MB / 256MB = 0.01171875
+	totalSize := int64(3 * 1024 * 1024) // 3MB
+	expectedScore := float64(totalSize) / float64(level1SizeLimit)
+
+	t.Logf("L0 score: %.4f (files: %d, total: %d bytes, next level limit: %d)",
+		score, version.GetLevelFileCount(0), totalSize, level1SizeLimit)
+
 	if score != expectedScore {
-		t.Errorf("Expected L0 score %.2f, got %.2f", expectedScore, score)
+		t.Errorf("Expected L0 score %.4f, got %.4f", expectedScore, score)
 	}
 }
 
@@ -544,9 +552,9 @@ func TestCompactionQueryOrder(t *testing.T) {
 	stats := table.GetCompactionManager().GetLevelStats()
 	t.Logf("Compaction 统计:")
 	for _, levelStat := range stats {
-		level := levelStat["level"].(int)
-		fileCount := levelStat["file_count"].(int)
-		totalSize := levelStat["total_size"].(int64)
+		level := levelStat.Level
+		fileCount := levelStat.FileCount
+		totalSize := levelStat.TotalSize
 		if fileCount > 0 {
 			t.Logf("  L%d: %d 个文件, %.2f MB", level, fileCount, float64(totalSize)/(1024*1024))
 		}

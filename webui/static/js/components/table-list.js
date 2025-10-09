@@ -1,5 +1,6 @@
-import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
-import { sharedStyles, cssVariables } from '../styles/shared-styles.js';
+import { LitElement, html, css } from 'lit';
+import { sharedStyles, cssVariables } from '~/common/shared-styles.js';
+import { tableAPI } from '~/common/api.js';
 
 export class TableList extends LitElement {
   static properties = {
@@ -209,9 +210,7 @@ export class TableList extends LitElement {
 
   async loadTables() {
     try {
-      const response = await fetch('/api/tables');
-      if (!response.ok) throw new Error('Failed to load tables');
-      this.tables = await response.json();
+      this.tables = await tableAPI.list();
     } catch (error) {
       console.error('Error loading tables:', error);
     }

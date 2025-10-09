@@ -1,4 +1,4 @@
-import { css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
+import { css } from 'lit';
 
 // 共享的基础样式
 export const sharedStyles = css`
