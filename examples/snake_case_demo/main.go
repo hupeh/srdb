@@ -93,6 +93,9 @@ func main() {
 	}
 
 	// 创建 Schema
-	schema := srdb.NewSchema("demo", fields)
+	schema, err := srdb.NewSchema("demo", fields)
+	if err != nil {
+		log.Fatal(err)
+	}
 	fmt.Printf("\n✅ 成功创建 Schema，包含 %d 个字段\n", len(schema.Fields))
 }

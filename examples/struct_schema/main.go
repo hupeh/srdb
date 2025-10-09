@@ -38,7 +38,10 @@ func main() {
 	}
 
 	// 创建 Schema
-	schema := srdb.NewSchema("users", fields)
+	schema, err := srdb.NewSchema("users", fields)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// 打印 Schema 信息
 	fmt.Printf("Schema 名称: %s\n", schema.Name)

@@ -20,9 +20,12 @@ func TestCompactionBasic(t *testing.T) {
 	}
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建 VersionSet
 	versionSet, err := NewVersionSet(manifestDir)
@@ -222,9 +225,12 @@ func TestCompactionMerge(t *testing.T) {
 	}
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建 VersionSet
 	versionSet, err := NewVersionSet(manifestDir)
@@ -343,9 +349,12 @@ func BenchmarkCompaction(b *testing.B) {
 	}
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeString},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	// 创建 VersionSet
 	versionSet, err := NewVersionSet(manifestDir)
@@ -429,12 +438,15 @@ func TestCompactionQueryOrder(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 Schema - 包含多个字段以增加数据大小
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64},
 		{Name: "name", Type: FieldTypeString},
 		{Name: "data", Type: FieldTypeString},
 		{Name: "timestamp", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 打开 Table (使用较小的 MemTable 触发频繁 flush)
 	table, err := OpenTable(&TableOptions{

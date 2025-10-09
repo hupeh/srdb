@@ -1,41 +1,65 @@
 package srdb
 
 import (
+	"strings"
 	"testing"
 )
 
-// UserSchema 用户表 Schema
-var UserSchema = NewSchema("users", []Field{
-	{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
-	{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
-	{Name: "email", Type: FieldTypeString, Indexed: true, Comment: "邮箱"},
-	{Name: "description", Type: FieldTypeString, Indexed: false, Comment: "描述"},
-})
+// Package-level test schemas
+var (
+	UserSchema  *Schema
+	LogSchema   *Schema
+	OrderSchema *Schema
+)
 
-// LogSchema 日志表 Schema
-var LogSchema = NewSchema("logs", []Field{
-	{Name: "level", Type: FieldTypeString, Indexed: true, Comment: "日志级别"},
-	{Name: "message", Type: FieldTypeString, Indexed: false, Comment: "日志消息"},
-	{Name: "source", Type: FieldTypeString, Indexed: true, Comment: "来源"},
-	{Name: "error_code", Type: FieldTypeInt64, Indexed: true, Comment: "错误码"},
-})
+func init() {
+	var err error
 
-// OrderSchema 订单表 Schema
-var OrderSchema = NewSchema("orders", []Field{
-	{Name: "order_id", Type: FieldTypeString, Indexed: true, Comment: "订单ID"},
-	{Name: "user_id", Type: FieldTypeInt64, Indexed: true, Comment: "用户ID"},
-	{Name: "amount", Type: FieldTypeFloat, Indexed: true, Comment: "金额"},
-	{Name: "status", Type: FieldTypeString, Indexed: true, Comment: "状态"},
-	{Name: "paid", Type: FieldTypeBool, Indexed: true, Comment: "是否支付"},
-})
+	// UserSchema 用户表 Schema
+	UserSchema, err = NewSchema("users", []Field{
+		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
+		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
+		{Name: "email", Type: FieldTypeString, Indexed: true, Comment: "邮箱"},
+		{Name: "description", Type: FieldTypeString, Indexed: false, Comment: "描述"},
+	})
+	if err != nil {
+		panic("Failed to create UserSchema: " + err.Error())
+	}
+
+	// LogSchema 日志表 Schema
+	LogSchema, err = NewSchema("logs", []Field{
+		{Name: "level", Type: FieldTypeString, Indexed: true, Comment: "日志级别"},
+		{Name: "message", Type: FieldTypeString, Indexed: false, Comment: "日志消息"},
+		{Name: "source", Type: FieldTypeString, Indexed: true, Comment: "来源"},
+		{Name: "error_code", Type: FieldTypeInt64, Indexed: true, Comment: "错误码"},
+	})
+	if err != nil {
+		panic("Failed to create LogSchema: " + err.Error())
+	}
+
+	// OrderSchema 订单表 Schema
+	OrderSchema, err = NewSchema("orders", []Field{
+		{Name: "order_id", Type: FieldTypeString, Indexed: true, Comment: "订单ID"},
+		{Name: "user_id", Type: FieldTypeInt64, Indexed: true, Comment: "用户ID"},
+		{Name: "amount", Type: FieldTypeFloat, Indexed: true, Comment: "金额"},
+		{Name: "status", Type: FieldTypeString, Indexed: true, Comment: "状态"},
+		{Name: "paid", Type: FieldTypeBool, Indexed: true, Comment: "是否支付"},
+	})
+	if err != nil {
+		panic("Failed to create OrderSchema: " + err.Error())
+	}
+}
 
 func TestSchema(t *testing.T) {
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 		{Name: "score", Type: FieldTypeFloat, Indexed: false, Comment: "分数"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 测试数据
 	data := map[string]any{
@@ -45,7 +69,7 @@ func TestSchema(t *testing.T) {
 	}
 
 	// 验证
-	err := schema.Validate(data)
+	err = schema.Validate(data)
 	if err != nil {
 		t.Errorf("Validation failed: %v", err)
 	}
@@ -60,10 +84,13 @@ func TestSchema(t *testing.T) {
 }
 
 func TestSchemaValidation(t *testing.T) {
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 正确的数据
 	validData := map[string]any{
@@ -71,7 +98,7 @@ func TestSchemaValidation(t *testing.T) {
 		"age":  30,
 	}
 
-	err := schema.Validate(validData)
+	err = schema.Validate(validData)
 	if err != nil {
 		t.Errorf("Valid data failed validation: %v", err)
 	}
@@ -90,11 +117,361 @@ func TestSchemaValidation(t *testing.T) {
 	t.Log("Schema validation test passed!")
 }
 
+// TestNewSchemaValidation 测试 NewSchema 的各种验证场景
+func TestNewSchemaValidation(t *testing.T) {
+	tests := []struct {
+		name        string
+		schemaName  string
+		fields      []Field
+		shouldError bool
+		errorMsg    string
+	}{
+		{
+			name:       "Valid schema",
+			schemaName: "users",
+			fields: []Field{
+				{Name: "id", Type: FieldTypeInt64},
+				{Name: "name", Type: FieldTypeString},
+			},
+			shouldError: false,
+		},
+		{
+			name:        "Empty schema name",
+			schemaName:  "",
+			fields:      []Field{{Name: "id", Type: FieldTypeInt64}},
+			shouldError: true,
+			errorMsg:    "schema name cannot be empty",
+		},
+		{
+			name:        "Empty fields array",
+			schemaName:  "users",
+			fields:      []Field{},
+			shouldError: true,
+			errorMsg:    "schema must have at least one field",
+		},
+		{
+			name:        "Nil fields array",
+			schemaName:  "users",
+			fields:      nil,
+			shouldError: true,
+			errorMsg:    "schema must have at least one field",
+		},
+		{
+			name:       "Empty field name at index 0",
+			schemaName: "users",
+			fields: []Field{
+				{Name: "", Type: FieldTypeInt64},
+			},
+			shouldError: true,
+			errorMsg:    "field at index 0 has empty name",
+		},
+		{
+			name:       "Empty field name at index 1",
+			schemaName: "users",
+			fields: []Field{
+				{Name: "id", Type: FieldTypeInt64},
+				{Name: "", Type: FieldTypeString},
+			},
+			shouldError: true,
+			errorMsg:    "field at index 1 has empty name",
+		},
+		{
+			name:       "Duplicate field name",
+			schemaName: "users",
+			fields: []Field{
+				{Name: "id", Type: FieldTypeInt64},
+				{Name: "name", Type: FieldTypeString},
+				{Name: "id", Type: FieldTypeString}, // Duplicate
+			},
+			shouldError: true,
+			errorMsg:    "duplicate field name: id",
+		},
+		{
+			name:       "Valid schema with single field",
+			schemaName: "logs",
+			fields: []Field{
+				{Name: "message", Type: FieldTypeString},
+			},
+			shouldError: false,
+		},
+		{
+			name:       "Valid schema with indexed field",
+			schemaName: "users",
+			fields: []Field{
+				{Name: "id", Type: FieldTypeInt64, Indexed: true},
+				{Name: "email", Type: FieldTypeString, Indexed: true},
+				{Name: "age", Type: FieldTypeInt64},
+			},
+			shouldError: false,
+		},
+		{
+			name:       "Valid schema with comments",
+			schemaName: "products",
+			fields: []Field{
+				{Name: "id", Type: FieldTypeInt64, Comment: "产品ID"},
+				{Name: "name", Type: FieldTypeString, Comment: "产品名称"},
+				{Name: "price", Type: FieldTypeFloat, Comment: "价格"},
+			},
+			shouldError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			schema, err := NewSchema(tt.schemaName, tt.fields)
+
+			if tt.shouldError {
+				if err == nil {
+					t.Errorf("Expected error but got none")
+					return
+				}
+
+				if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Expected error to contain %q, got %q", tt.errorMsg, err.Error())
+				}
+
+				// 验证错误码是 ErrCodeSchemaInvalid
+				if GetErrorCode(err) != ErrCodeSchemaInvalid {
+					t.Errorf("Expected error code %d, got %d", ErrCodeSchemaInvalid, GetErrorCode(err))
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error but got: %v", err)
+					return
+				}
+
+				// 验证返回的 schema 是正确的
+				if schema == nil {
+					t.Errorf("Expected schema, got nil")
+					return
+				}
+				if schema.Name != tt.schemaName {
+					t.Errorf("Expected schema name %q, got %q", tt.schemaName, schema.Name)
+				}
+				if len(schema.Fields) != len(tt.fields) {
+					t.Errorf("Expected %d fields, got %d", len(tt.fields), len(schema.Fields))
+				}
+			}
+		})
+	}
+}
+
+// TestNewSchemaFieldValidation 测试字段级别的验证
+func TestNewSchemaFieldValidation(t *testing.T) {
+	t.Run("Multiple duplicate field names", func(t *testing.T) {
+		schema, err := NewSchema("test", []Field{
+			{Name: "id", Type: FieldTypeInt64},
+			{Name: "name", Type: FieldTypeString},
+			{Name: "id", Type: FieldTypeString},   // First duplicate
+			{Name: "name", Type: FieldTypeString}, // Second duplicate
+		})
+
+		if err == nil {
+			t.Errorf("Expected error for duplicate field names")
+			return
+		}
+
+		// 应该在第一个重复处就停止
+		if !strings.Contains(err.Error(), "duplicate field name: id") {
+			t.Errorf("Expected error about duplicate field 'id', got: %v", err)
+		}
+
+		if schema != nil {
+			t.Errorf("Expected nil schema on error, got %+v", schema)
+		}
+	})
+
+	t.Run("Case sensitive field names", func(t *testing.T) {
+		// 大小写敏感，ID 和 id 应该是不同的字段
+		schema, err := NewSchema("test", []Field{
+			{Name: "id", Type: FieldTypeInt64},
+			{Name: "ID", Type: FieldTypeInt64},
+			{Name: "Id", Type: FieldTypeInt64},
+		})
+
+		if err != nil {
+			t.Errorf("Expected no error for case-sensitive field names, got: %v", err)
+			return
+		}
+
+		if len(schema.Fields) != 3 {
+			t.Errorf("Expected 3 fields (case sensitive), got %d", len(schema.Fields))
+		}
+	})
+
+	t.Run("Fields with all types", func(t *testing.T) {
+		schema, err := NewSchema("test", []Field{
+			{Name: "int_field", Type: FieldTypeInt64},
+			{Name: "string_field", Type: FieldTypeString},
+			{Name: "float_field", Type: FieldTypeFloat},
+			{Name: "bool_field", Type: FieldTypeBool},
+		})
+
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+			return
+		}
+
+		if len(schema.Fields) != 4 {
+			t.Errorf("Expected 4 fields, got %d", len(schema.Fields))
+		}
+
+		// 验证每个字段的类型
+		expectedTypes := map[string]FieldType{
+			"int_field":    FieldTypeInt64,
+			"string_field": FieldTypeString,
+			"float_field":  FieldTypeFloat,
+			"bool_field":   FieldTypeBool,
+		}
+
+		for _, field := range schema.Fields {
+			expectedType, exists := expectedTypes[field.Name]
+			if !exists {
+				t.Errorf("Unexpected field name: %s", field.Name)
+				continue
+			}
+			if field.Type != expectedType {
+				t.Errorf("Field %s: expected type %v, got %v", field.Name, expectedType, field.Type)
+			}
+		}
+	})
+}
+
+// TestNewSchemaEdgeCases 测试边界情况
+func TestNewSchemaEdgeCases(t *testing.T) {
+	t.Run("Very long schema name", func(t *testing.T) {
+		longName := strings.Repeat("a", 1000)
+		schema, err := NewSchema(longName, []Field{
+			{Name: "id", Type: FieldTypeInt64},
+		})
+
+		if err != nil {
+			t.Errorf("Expected no error for long schema name, got: %v", err)
+			return
+		}
+
+		if schema.Name != longName {
+			t.Errorf("Expected schema name to be preserved")
+		}
+	})
+
+	t.Run("Very long field name", func(t *testing.T) {
+		longFieldName := strings.Repeat("b", 1000)
+		schema, err := NewSchema("test", []Field{
+			{Name: longFieldName, Type: FieldTypeInt64},
+		})
+
+		if err != nil {
+			t.Errorf("Expected no error for long field name, got: %v", err)
+			return
+		}
+
+		if schema.Fields[0].Name != longFieldName {
+			t.Errorf("Expected field name to be preserved")
+		}
+	})
+
+	t.Run("Many fields", func(t *testing.T) {
+		fields := make([]Field, 100)
+		for i := 0; i < 100; i++ {
+			fields[i] = Field{
+				Name: strings.Repeat("field", 1) + string(rune('a'+i)),
+				Type: FieldTypeInt64,
+			}
+		}
+
+		schema, err := NewSchema("test", fields)
+
+		if err != nil {
+			t.Errorf("Expected no error for many fields, got: %v", err)
+			return
+		}
+
+		if len(schema.Fields) != 100 {
+			t.Errorf("Expected 100 fields, got %d", len(schema.Fields))
+		}
+	})
+
+	t.Run("Field with special characters", func(t *testing.T) {
+		schema, err := NewSchema("test", []Field{
+			{Name: "field_with_underscore", Type: FieldTypeInt64},
+			{Name: "field123", Type: FieldTypeInt64},
+			{Name: "字段名", Type: FieldTypeString}, // 中文字段名
+		})
+
+		if err != nil {
+			t.Errorf("Expected no error for special characters, got: %v", err)
+			return
+		}
+
+		if len(schema.Fields) != 3 {
+			t.Errorf("Expected 3 fields with special characters, got %d", len(schema.Fields))
+		}
+	})
+}
+
+// TestNewSchemaConsistency 测试创建后的一致性
+func TestNewSchemaConsistency(t *testing.T) {
+	t.Run("Field order preserved", func(t *testing.T) {
+		fields := []Field{
+			{Name: "zebra", Type: FieldTypeString},
+			{Name: "alpha", Type: FieldTypeInt64},
+			{Name: "beta", Type: FieldTypeFloat},
+		}
+
+		schema, err := NewSchema("test", fields)
+
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+			return
+		}
+
+		// 字段顺序应该保持不变
+		for i, field := range schema.Fields {
+			if field.Name != fields[i].Name {
+				t.Errorf("Field order not preserved at index %d: expected %s, got %s",
+					i, fields[i].Name, field.Name)
+			}
+		}
+	})
+
+	t.Run("Field properties preserved", func(t *testing.T) {
+		fields := []Field{
+			{Name: "id", Type: FieldTypeInt64, Indexed: true, Comment: "Primary key"},
+			{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "User name"},
+		}
+
+		schema, err := NewSchema("users", fields)
+
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+			return
+		}
+
+		// 验证所有属性都被保留
+		if schema.Fields[0].Indexed != true {
+			t.Errorf("Expected field 0 to be indexed")
+		}
+		if schema.Fields[1].Indexed != false {
+			t.Errorf("Expected field 1 to not be indexed")
+		}
+		if schema.Fields[0].Comment != "Primary key" {
+			t.Errorf("Expected field 0 comment to be preserved")
+		}
+		if schema.Fields[1].Comment != "User name" {
+			t.Errorf("Expected field 1 comment to be preserved")
+		}
+	})
+}
+
 func TestExtractIndexValue(t *testing.T) {
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	data := map[string]any{
 		"name": "David",
@@ -156,15 +533,21 @@ func TestPredefinedSchemas(t *testing.T) {
 func TestChecksumDeterminism(t *testing.T) {
 	// 创建相同的 Schema 多次
 	for i := range 10 {
-		s1 := NewSchema("users", []Field{
+		s1, err := NewSchema("users", []Field{
 			{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 			{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-		s2 := NewSchema("users", []Field{
+		s2, err := NewSchema("users", []Field{
 			{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 			{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		checksum1, err := s1.ComputeChecksum()
 		if err != nil {
@@ -186,15 +569,21 @@ func TestChecksumDeterminism(t *testing.T) {
 
 // TestChecksumFieldOrderIndependent 测试字段顺序不影响 checksum
 func TestChecksumFieldOrderIndependent(t *testing.T) {
-	s1 := NewSchema("users", []Field{
+	s1, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	s2 := NewSchema("users", []Field{
+	s2, err := NewSchema("users", []Field{
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	checksum1, _ := s1.ComputeChecksum()
 	checksum2, _ := s2.ComputeChecksum()
@@ -209,13 +598,19 @@ func TestChecksumFieldOrderIndependent(t *testing.T) {
 
 // TestChecksumDifferentData 测试不同 Schema 的 checksum 应该不同
 func TestChecksumDifferentData(t *testing.T) {
-	s1 := NewSchema("users", []Field{
+	s1, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	s2 := NewSchema("users", []Field{
+	s2, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"}, // Indexed 不同
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	checksum1, _ := s1.ComputeChecksum()
 	checksum2, _ := s2.ComputeChecksum()
@@ -236,12 +631,20 @@ func TestChecksumMultipleFieldOrders(t *testing.T) {
 	fieldD := Field{Name: "email", Type: FieldTypeString, Indexed: true, Comment: "邮箱"}
 
 	// 创建不同顺序的 Schema
+	mustNewSchema := func(name string, fields []Field) *Schema {
+		s, err := NewSchema(name, fields)
+		if err != nil {
+			t.Fatalf("Failed to create schema: %v", err)
+		}
+		return s
+	}
+
 	schemas := []*Schema{
-		NewSchema("test", []Field{fieldA, fieldB, fieldC, fieldD}), // 原始顺序
-		NewSchema("test", []Field{fieldD, fieldC, fieldB, fieldA}), // 完全反转
-		NewSchema("test", []Field{fieldB, fieldD, fieldA, fieldC}), // 随机顺序 1
-		NewSchema("test", []Field{fieldC, fieldA, fieldD, fieldB}), // 随机顺序 2
-		NewSchema("test", []Field{fieldD, fieldA, fieldC, fieldB}), // 随机顺序 3
+		mustNewSchema("test", []Field{fieldA, fieldB, fieldC, fieldD}), // 原始顺序
+		mustNewSchema("test", []Field{fieldD, fieldC, fieldB, fieldA}), // 完全反转
+		mustNewSchema("test", []Field{fieldB, fieldD, fieldA, fieldC}), // 随机顺序 1
+		mustNewSchema("test", []Field{fieldC, fieldA, fieldD, fieldB}), // 随机顺序 2
+		mustNewSchema("test", []Field{fieldD, fieldA, fieldC, fieldB}), // 随机顺序 3
 	}
 
 	// 计算所有 checksum
@@ -478,7 +881,10 @@ func TestStructToFieldsWithSchema(t *testing.T) {
 	}
 
 	// 创建 Schema
-	schema := NewSchema("customers", fields)
+	schema, err := NewSchema("customers", fields)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 验证 Schema
 	if schema.Name != "customers" {

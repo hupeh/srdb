@@ -26,7 +26,7 @@ type Product struct {
 }
 
 func main() {
-	fmt.Println("=== SRDB 批量插入示例 ===\n")
+	fmt.Println("=== SRDB 批量插入示例 ===")
 
 	// 清理旧数据
 	os.RemoveAll("./data")
@@ -55,10 +55,13 @@ func main() {
 func example1() {
 	fmt.Println("=== 示例 1: 插入单个 map ===")
 
-	schema := srdb.NewSchema("users", []srdb.Field{
+	schema, err := srdb.NewSchema("users", []srdb.Field{
 		{Name: "name", Type: srdb.FieldTypeString, Comment: "用户名"},
 		{Name: "age", Type: srdb.FieldTypeInt64, Comment: "年龄"},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	table, err := srdb.OpenTable(&srdb.TableOptions{
 		Dir:    "./data/example1",
@@ -89,11 +92,14 @@ func example1() {
 func example2() {
 	fmt.Println("=== 示例 2: 批量插入 map 切片 ===")
 
-	schema := srdb.NewSchema("users", []srdb.Field{
+	schema, err := srdb.NewSchema("users", []srdb.Field{
 		{Name: "name", Type: srdb.FieldTypeString},
 		{Name: "age", Type: srdb.FieldTypeInt64},
 		{Name: "email", Type: srdb.FieldTypeString, Indexed: true},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	table, err := srdb.OpenTable(&srdb.TableOptions{
 		Dir:    "./data/example2",
@@ -134,12 +140,15 @@ func example2() {
 func example3() {
 	fmt.Println("=== 示例 3: 插入单个结构体 ===")
 
-	schema := srdb.NewSchema("users", []srdb.Field{
+	schema, err := srdb.NewSchema("users", []srdb.Field{
 		{Name: "name", Type: srdb.FieldTypeString},
 		{Name: "age", Type: srdb.FieldTypeInt64},
 		{Name: "email", Type: srdb.FieldTypeString},
 		{Name: "is_active", Type: srdb.FieldTypeBool},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	table, err := srdb.OpenTable(&srdb.TableOptions{
 		Dir:    "./data/example3",
@@ -175,12 +184,15 @@ func example3() {
 func example4() {
 	fmt.Println("=== 示例 4: 批量插入结构体切片 ===")
 
-	schema := srdb.NewSchema("users", []srdb.Field{
+	schema, err := srdb.NewSchema("users", []srdb.Field{
 		{Name: "name", Type: srdb.FieldTypeString},
 		{Name: "age", Type: srdb.FieldTypeInt64},
 		{Name: "email", Type: srdb.FieldTypeString},
 		{Name: "is_active", Type: srdb.FieldTypeBool},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	table, err := srdb.OpenTable(&srdb.TableOptions{
 		Dir:    "./data/example4",
@@ -222,12 +234,15 @@ func example4() {
 func example5() {
 	fmt.Println("=== 示例 5: 批量插入结构体指针切片 ===")
 
-	schema := srdb.NewSchema("users", []srdb.Field{
+	schema, err := srdb.NewSchema("users", []srdb.Field{
 		{Name: "name", Type: srdb.FieldTypeString},
 		{Name: "age", Type: srdb.FieldTypeInt64},
 		{Name: "email", Type: srdb.FieldTypeString},
 		{Name: "is_active", Type: srdb.FieldTypeBool},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	table, err := srdb.OpenTable(&srdb.TableOptions{
 		Dir:    "./data/example5",
@@ -262,12 +277,15 @@ func example5() {
 func example6() {
 	fmt.Println("=== 示例 6: 使用 snake_case 自动转换 ===")
 
-	schema := srdb.NewSchema("products", []srdb.Field{
+	schema, err := srdb.NewSchema("products", []srdb.Field{
 		{Name: "product_id", Type: srdb.FieldTypeString, Comment: "产品ID"},
 		{Name: "product_name", Type: srdb.FieldTypeString, Comment: "产品名称"},
 		{Name: "price", Type: srdb.FieldTypeFloat, Comment: "价格"},
 		{Name: "in_stock", Type: srdb.FieldTypeBool, Comment: "是否有货"},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	table, err := srdb.OpenTable(&srdb.TableOptions{
 		Dir:    "./data/example6",

@@ -80,7 +80,10 @@ func OpenTable(opts *TableOptions) (*Table, error) {
 	var sch *Schema
 	if opts.Name != "" && len(opts.Fields) > 0 {
 		// 从 Name 和 Fields 创建 Schema
-		sch = NewSchema(opts.Name, opts.Fields)
+		sch, err = NewSchema(opts.Name, opts.Fields)
+		if err != nil {
+			return nil, fmt.Errorf("create schema: %w", err)
+		}
 		// 保存到磁盘（带校验和）
 		schemaPath := filepath.Join(opts.Dir, "schema.json")
 		schemaFile, err := NewSchemaFile(sch)

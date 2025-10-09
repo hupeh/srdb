@@ -40,10 +40,13 @@ func TestCreateTable(t *testing.T) {
 	defer db.Close()
 
 	// 创建 Schema
-	userSchema := NewSchema("users", []Field{
+	userSchema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建表
 	usersTable, err := db.CreateTable("users", userSchema)
@@ -76,15 +79,21 @@ func TestMultipleTables(t *testing.T) {
 	defer db.Close()
 
 	// 创建多个表
-	userSchema := NewSchema("users", []Field{
+	userSchema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	orderSchema := NewSchema("orders", []Field{
+	orderSchema, err := NewSchema("orders", []Field{
 		{Name: "order_id", Type: FieldTypeString, Indexed: true, Comment: "订单ID"},
 		{Name: "amount", Type: FieldTypeInt64, Indexed: true, Comment: "金额"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = db.CreateTable("users", userSchema)
 	if err != nil {
@@ -117,10 +126,13 @@ func TestTableOperations(t *testing.T) {
 	defer db.Close()
 
 	// 创建表
-	userSchema := NewSchema("users", []Field{
+	userSchema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	usersTable, err := db.CreateTable("users", userSchema)
 	if err != nil {
@@ -179,9 +191,12 @@ func TestDropTable(t *testing.T) {
 	defer db.Close()
 
 	// 创建表
-	userSchema := NewSchema("users", []Field{
+	userSchema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = db.CreateTable("users", userSchema)
 	if err != nil {
@@ -214,10 +229,13 @@ func TestDatabaseRecover(t *testing.T) {
 		t.Fatalf("Open failed: %v", err)
 	}
 
-	userSchema := NewSchema("users", []Field{
+	userSchema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	usersTable, err := db1.CreateTable("users", userSchema)
 	if err != nil {
@@ -272,10 +290,13 @@ func TestDatabaseClean(t *testing.T) {
 
 	// 2. 创建多个表并插入数据
 	// 表 1: users
-	usersSchema := NewSchema("users", []Field{
+	usersSchema, err := NewSchema("users", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: true, Comment: "User ID"},
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "Name"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	usersTable, err := db.CreateTable("users", usersSchema)
 	if err != nil {
 		t.Fatal(err)
@@ -289,10 +310,13 @@ func TestDatabaseClean(t *testing.T) {
 	}
 
 	// 表 2: orders
-	ordersSchema := NewSchema("orders", []Field{
+	ordersSchema, err := NewSchema("orders", []Field{
 		{Name: "order_id", Type: FieldTypeInt64, Indexed: true, Comment: "Order ID"},
 		{Name: "amount", Type: FieldTypeInt64, Indexed: false, Comment: "Amount"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	ordersTable, err := db.CreateTable("orders", ordersSchema)
 	if err != nil {
 		t.Fatal(err)
@@ -367,9 +391,12 @@ func TestDatabaseDestroy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	table, err := db.CreateTable("test", schema)
 	if err != nil {
 		t.Fatal(err)
@@ -420,10 +447,13 @@ func TestDatabaseCleanMultipleTables(t *testing.T) {
 	// 创建 5 个表
 	for i := range 5 {
 		tableName := fmt.Sprintf("table%d", i)
-		schema := NewSchema(tableName, []Field{
+		schema, err := NewSchema(tableName, []Field{
 			{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 			{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "Value"},
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		table, err := db.CreateTable(tableName, schema)
 		if err != nil {
@@ -493,9 +523,12 @@ func TestDatabaseCleanAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	table, err := db.CreateTable("test", schema)
 	if err != nil {
 		t.Fatal(err)
@@ -560,10 +593,13 @@ func TestDatabaseCleanTable(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "Name"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := db.CreateTable("users", schema)
 	if err != nil {
@@ -629,9 +665,12 @@ func TestDatabaseDestroyTable(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := db.CreateTable("test", schema)
 	if err != nil {
@@ -681,9 +720,12 @@ func TestDatabaseDestroyTableMultiple(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建 3 个表
 	for i := 1; i <= 3; i++ {

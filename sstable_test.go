@@ -16,10 +16,13 @@ func TestSSTable(t *testing.T) {
 	defer os.Remove("test.sst")
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 2. 写入数据
 	writer := NewSSTableWriter(file, schema)
@@ -164,9 +167,12 @@ func TestSSTableHeaderSerialization(t *testing.T) {
 
 func BenchmarkSSTableGet(b *testing.B) {
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	// 创建测试文件
 	file, _ := os.Create("bench.sst")

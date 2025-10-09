@@ -12,18 +12,21 @@ func TestIndexBTreeBasic(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64},
 		{Name: "name", Type: FieldTypeString},
 		{Name: "city", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建索引管理器
 	mgr := NewIndexManager(tmpDir, schema)
 	defer mgr.Close()
 
 	// 创建索引
-	err := mgr.CreateIndex("city")
+	err = mgr.CreateIndex("city")
 	if err != nil {
 		t.Fatalf("Failed to create index: %v", err)
 	}
@@ -126,17 +129,20 @@ func TestIndexBTreeLargeDataset(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64},
 		{Name: "category", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建索引管理器
 	mgr := NewIndexManager(tmpDir, schema)
 	defer mgr.Close()
 
 	// 创建索引
-	err := mgr.CreateIndex("category")
+	err = mgr.CreateIndex("category")
 	if err != nil {
 		t.Fatalf("Failed to create index: %v", err)
 	}
@@ -211,16 +217,19 @@ func TestIndexBTreeBackwardCompatibility(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64},
 		{Name: "status", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建索引管理器并用旧方式（通过先禁用新格式）创建索引
 	mgr := NewIndexManager(tmpDir, schema)
 
 	// 创建索引
-	err := mgr.CreateIndex("status")
+	err = mgr.CreateIndex("status")
 	if err != nil {
 		t.Fatalf("Failed to create index: %v", err)
 	}
@@ -286,17 +295,20 @@ func TestIndexBTreeIncrementalUpdate(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 创建 Schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64},
 		{Name: "tag", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 创建索引管理器
 	mgr := NewIndexManager(tmpDir, schema)
 	defer mgr.Close()
 
 	// 创建索引
-	err := mgr.CreateIndex("tag")
+	err = mgr.CreateIndex("tag")
 	if err != nil {
 		t.Fatalf("Failed to create index: %v", err)
 	}

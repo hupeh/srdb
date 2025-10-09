@@ -18,10 +18,13 @@ func TestTable(t *testing.T) {
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
@@ -80,9 +83,12 @@ func TestTableRecover(t *testing.T) {
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeInt64, Indexed: false, Comment: "值"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建引擎并插入数据
 	table, err := OpenTable(&TableOptions{
@@ -143,9 +149,12 @@ func TestTableFlush(t *testing.T) {
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "data", Type: FieldTypeString, Indexed: false, Comment: "数据"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:          dir,
@@ -193,9 +202,12 @@ func BenchmarkTableInsert(b *testing.B) {
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeInt64, Indexed: false, Comment: "值"},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	table, _ := OpenTable(&TableOptions{
 		Dir:          dir,
@@ -219,9 +231,12 @@ func BenchmarkTableGet(b *testing.B) {
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "value", Type: FieldTypeInt64, Indexed: false, Comment: "值"},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	table, _ := OpenTable(&TableOptions{
 		Dir:          dir,
@@ -251,9 +266,12 @@ func TestHighConcurrencyWrite(t *testing.T) {
 
 	// Note: This test uses []byte payload - we create a minimal schema
 	// Schema validation accepts []byte as it gets JSON-marshaled
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "worker_id", Type: FieldTypeInt64, Indexed: false, Comment: "Worker ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -366,9 +384,12 @@ func TestConcurrentReadWrite(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Note: This test uses []byte data - we create a minimal schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "writer_id", Type: FieldTypeInt64, Indexed: false, Comment: "Writer ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -485,9 +506,12 @@ func TestPowerFailureRecovery(t *testing.T) {
 	t.Log("=== 阶段 1: 写入数据 ===")
 
 	// Note: This test uses []byte data - we create a minimal schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "Batch number"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -621,9 +645,12 @@ func TestCrashDuringCompaction(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Note: This test uses []byte data - we create a minimal schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "Index"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -721,9 +748,12 @@ func TestLargeDataIntegrity(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Note: This test uses []byte data - we create a minimal schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "size", Type: FieldTypeInt64, Indexed: false, Comment: "Size"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -832,9 +862,12 @@ func BenchmarkConcurrentWrites(b *testing.B) {
 	tmpDir := b.TempDir()
 
 	// Note: This benchmark uses []byte data - we create a minimal schema
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "timestamp", Type: FieldTypeInt64, Indexed: false, Comment: "Timestamp"},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -883,11 +916,14 @@ func TestTableWithCompaction(t *testing.T) {
 	// 创建临时目录
 	tmpDir := t.TempDir()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "批次"},
 		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
 		{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "值"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 打开 Table
 	opts := &TableOptions{
@@ -1009,11 +1045,14 @@ func TestTableWithCompaction(t *testing.T) {
 func TestTableCompactionMerge(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "批次"},
 		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
 		{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "值"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -1114,10 +1153,13 @@ func TestTableBackgroundCompaction(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "batch", Type: FieldTypeInt64, Indexed: false, Comment: "批次"},
 		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -1201,10 +1243,13 @@ func TestTableBackgroundCompaction(t *testing.T) {
 func BenchmarkTableWithCompaction(b *testing.B) {
 	tmpDir := b.TempDir()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "index", Type: FieldTypeInt64, Indexed: false, Comment: "索引"},
 		{Name: "value", Type: FieldTypeString, Indexed: false, Comment: "值"},
 	})
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	opts := &TableOptions{
 		Dir:          tmpDir,
@@ -1253,11 +1298,14 @@ func TestTableSchemaRecover(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 创建 Schema
-	s := NewSchema("users", []Field{
+	s, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 		{Name: "email", Type: FieldTypeString, Indexed: false, Comment: "邮箱"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建引擎并插入数据（带 Schema）
 	table, err := OpenTable(&TableOptions{
@@ -1325,10 +1373,13 @@ func TestTableSchemaRecoverInvalid(t *testing.T) {
 	os.RemoveAll(dir)
 	defer os.RemoveAll(dir)
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeString, Indexed: false, Comment: "年龄字符串"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 先不带 Schema 插入一些数据
 	table, err := OpenTable(&TableOptions{
@@ -1369,10 +1420,13 @@ func TestTableSchemaRecoverInvalid(t *testing.T) {
 	}
 
 	// 3. 创建 Schema，age 字段要求 int64
-	s := NewSchema("users", []Field{
+	s, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 4. 尝试用 Schema 打开引擎，应该失败
 	table2, err := OpenTable(&TableOptions{
@@ -1400,10 +1454,13 @@ func TestTableAutoRecoverSchema(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 创建 Schema
-	s := NewSchema("users", []Field{
+	s, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建引擎并提供 Schema（会保存到磁盘）
 	table1, err := OpenTable(&TableOptions{
@@ -1492,10 +1549,13 @@ func TestTableSchemaTamperDetection(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 创建 Schema
-	s := NewSchema("users", []Field{
+	s, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "用户名"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: false, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建引擎并保存 Schema
 	table1, err := OpenTable(&TableOptions{
@@ -1554,10 +1614,13 @@ func TestTableClean(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: true, Comment: "ID"},
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "Name"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := db.CreateTable("users", schema)
 	if err != nil {
@@ -1623,9 +1686,12 @@ func TestTableDestroy(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := db.CreateTable("test", schema)
 	if err != nil {
@@ -1679,11 +1745,14 @@ func TestTableCleanWithIndex(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: true, Comment: "ID"},
 		{Name: "email", Type: FieldTypeString, Indexed: true, Comment: "Email"},
 		{Name: "name", Type: FieldTypeString, Indexed: false, Comment: "Name"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := db.CreateTable("users", schema)
 	if err != nil {
@@ -1765,10 +1834,13 @@ func TestTableCleanAndQuery(t *testing.T) {
 	}
 	defer db.Close()
 
-	schema := NewSchema("test", []Field{
+	schema, err := NewSchema("test", []Field{
 		{Name: "id", Type: FieldTypeInt64, Indexed: false, Comment: "ID"},
 		{Name: "status", Type: FieldTypeString, Indexed: false, Comment: "Status"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := db.CreateTable("test", schema)
 	if err != nil {
@@ -1850,10 +1922,13 @@ func TestInsertMap(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestInsertMap")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -1892,10 +1967,13 @@ func TestInsertMapSlice(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestInsertMapSlice")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -1940,11 +2018,14 @@ func TestInsertStruct(t *testing.T) {
 		Email string `srdb:"email"`
 	}
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 		{Name: "email", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -1995,11 +2076,14 @@ func TestInsertStructPointer(t *testing.T) {
 		Email string `srdb:"email"`
 	}
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 		{Name: "email", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -2046,10 +2130,13 @@ func TestInsertStructSlice(t *testing.T) {
 		Age  int64  `srdb:"age"`
 	}
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -2095,10 +2182,13 @@ func TestInsertStructPointerSlice(t *testing.T) {
 		Age  int64  `srdb:"age"`
 	}
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -2146,11 +2236,14 @@ func TestInsertWithSnakeCase(t *testing.T) {
 		IsActive     bool   // 应该自动转为 is_active
 	}
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "user_name", Type: FieldTypeString, Comment: "用户名"},
 		{Name: "email_address", Type: FieldTypeString},
 		{Name: "is_active", Type: FieldTypeBool},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -2198,9 +2291,12 @@ func TestInsertInvalidType(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestInsertInvalidType")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -2236,9 +2332,12 @@ func TestInsertEmptySlice(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestInsertEmptySlice")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -2270,10 +2369,13 @@ func TestBatchInsertPerformance(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestBatchInsertPerformance")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,

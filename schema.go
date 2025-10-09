@@ -50,11 +50,40 @@ type Schema struct {
 }
 
 // NewSchema 创建 Schema
-func NewSchema(name string, fields []Field) *Schema {
+// 参数：
+//   - name: Schema 名称，不能为空
+//   - fields: 字段列表，至少需要 1 个字段
+//
+// 返回：
+//   - *Schema: Schema 实例
+//   - error: 错误信息
+func NewSchema(name string, fields []Field) (*Schema, error) {
+	// 验证 name
+	if name == "" {
+		return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("schema name cannot be empty"))
+	}
+
+	// 验证 fields 数量
+	if len(fields) == 0 {
+		return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("schema must have at least one field"))
+	}
+
+	// 验证字段名不能为空且不能重复
+	fieldNames := make(map[string]bool)
+	for i, field := range fields {
+		if field.Name == "" {
+			return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("field at index %d has empty name", i))
+		}
+		if fieldNames[field.Name] {
+			return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("duplicate field name: %s", field.Name))
+		}
+		fieldNames[field.Name] = true
+	}
+
 	return &Schema{
 		Name:   name,
 		Fields: fields,
-	}
+	}, nil
 }
 
 // StructToFields 从 Go 结构体生成 Field 列表

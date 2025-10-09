@@ -23,19 +23,25 @@ func StartWebUI(dbPath string, addr string) {
 	defer db.Close()
 
 	// 创建示例 Schema
-	userSchema := srdb.NewSchema("users", []srdb.Field{
+	userSchema, err := srdb.NewSchema("users", []srdb.Field{
 		{Name: "name", Type: srdb.FieldTypeString, Indexed: true, Comment: "User name"},
 		{Name: "email", Type: srdb.FieldTypeString, Indexed: false, Comment: "Email address"},
 		{Name: "age", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "Age"},
 		{Name: "city", Type: srdb.FieldTypeString, Indexed: false, Comment: "City"},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	productSchema := srdb.NewSchema("products", []srdb.Field{
+	productSchema, err := srdb.NewSchema("products", []srdb.Field{
 		{Name: "product_name", Type: srdb.FieldTypeString, Indexed: true, Comment: "Product name"},
 		{Name: "price", Type: srdb.FieldTypeFloat, Indexed: false, Comment: "Price"},
 		{Name: "quantity", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "Quantity"},
 		{Name: "category", Type: srdb.FieldTypeString, Indexed: false, Comment: "Category"},
 	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// 创建表（如果不存在）
 	tables := db.ListTables()
@@ -133,14 +139,16 @@ func autoInsertData(db *srdb.Database) {
 		hasLogs := slices.Contains(tables, "logs")
 
 		if !hasLogs {
-			logsSchema := srdb.NewSchema("logs", []srdb.Field{
+			logsSchema, err := srdb.NewSchema("logs", []srdb.Field{
 				{Name: "group", Type: srdb.FieldTypeString, Indexed: true, Comment: "Log group (A-E)"},
 				{Name: "timestamp", Type: srdb.FieldTypeString, Indexed: false, Comment: "Timestamp"},
 				{Name: "data", Type: srdb.FieldTypeString, Indexed: false, Comment: "Random data"},
 				{Name: "size_bytes", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "Data size in bytes"},
 			})
+			if err != nil {
+				log.Fatal(err)
+			}
 
-			var err error
 			logsTable, err = db.CreateTable("logs", logsSchema)
 			if err != nil {
 				log.Printf("Failed to create logs table: %v", err)

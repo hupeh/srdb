@@ -11,10 +11,13 @@ func TestLazyLoadingBasic(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestLazyLoadingBasic")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -67,10 +70,13 @@ func TestLazyLoadingVsEagerLoading(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestLazyLoadingVsEagerLoading")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -144,11 +150,14 @@ func TestIndexQueryIsEager(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestIndexQueryIsEager")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "email", Type: FieldTypeString, Indexed: true},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -226,11 +235,14 @@ func TestLazyLoadingWithConditions(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestLazyLoadingWithConditions")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 		{Name: "active", Type: FieldTypeBool},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,
@@ -301,10 +313,13 @@ func TestFirstDoesNotLoadAll(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "TestFirstDoesNotLoadAll")
 	defer os.RemoveAll(tmpDir)
 
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString},
 		{Name: "age", Type: FieldTypeInt64},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	table, err := OpenTable(&TableOptions{
 		Dir:    tmpDir,

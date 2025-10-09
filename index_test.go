@@ -11,9 +11,12 @@ func TestIndexVersionControl(t *testing.T) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	testSchema := NewSchema("test", []Field{
+	testSchema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建索引管理器
 	mgr := NewIndexManager(dir, testSchema)
@@ -72,9 +75,12 @@ func TestIncrementalUpdate(t *testing.T) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	testSchema := NewSchema("test", []Field{
+	testSchema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建索引并添加初始数据
 	mgr := NewIndexManager(dir, testSchema)
@@ -103,7 +109,7 @@ func TestIncrementalUpdate(t *testing.T) {
 	}
 
 	// 3. 增量更新
-	err := idx.IncrementalUpdate(getData, 3, 5)
+	err = idx.IncrementalUpdate(getData, 3, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,9 +149,12 @@ func TestNeedsUpdate(t *testing.T) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	testSchema := NewSchema("test", []Field{
+	testSchema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	mgr := NewIndexManager(dir, testSchema)
 	mgr.CreateIndex("name")
@@ -174,16 +183,19 @@ func TestIndexPersistence(t *testing.T) {
 	defer os.RemoveAll(dir)
 
 	// 创建 Schema
-	testSchema := NewSchema("test", []Field{
+	testSchema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 		{Name: "age", Type: FieldTypeInt64, Indexed: true, Comment: "年龄"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 1. 创建索引管理器
 	mgr := NewIndexManager(dir, testSchema)
 
 	// 2. 创建索引
-	err := mgr.CreateIndex("name")
+	err = mgr.CreateIndex("name")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,9 +265,12 @@ func TestIndexDropWithFile(t *testing.T) {
 	os.MkdirAll(dir, 0755)
 	defer os.RemoveAll(dir)
 
-	testSchema := NewSchema("test", []Field{
+	testSchema, err := NewSchema("test", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: true, Comment: "名称"},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	mgr := NewIndexManager(dir, testSchema)
 
@@ -272,7 +287,7 @@ func TestIndexDropWithFile(t *testing.T) {
 	}
 
 	// 删除索引
-	err := mgr.DropIndex("name")
+	err = mgr.DropIndex("name")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,11 +305,14 @@ func TestIndexQueryIntegration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// 1. 创建带索引字段的 Schema
-	schema := NewSchema("users", []Field{
+	schema, err := NewSchema("users", []Field{
 		{Name: "name", Type: FieldTypeString, Indexed: false},
 		{Name: "email", Type: FieldTypeString, Indexed: true}, // email 字段有索引
 		{Name: "age", Type: FieldTypeInt64, Indexed: false},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// 2. 打开表
 	table, err := OpenTable(&TableOptions{
@@ -450,11 +468,14 @@ func TestIndexPersistenceAcrossRestart(t *testing.T) {
 
 	// 1. 第一次打开：创建数据和索引
 	{
-		schema := NewSchema("products", []Field{
+		schema, err := NewSchema("products", []Field{
 			{Name: "name", Type: FieldTypeString, Indexed: false},
 			{Name: "category", Type: FieldTypeString, Indexed: true},
 			{Name: "price", Type: FieldTypeInt64, Indexed: false},
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		table, err := OpenTable(&TableOptions{
 			Dir:          tmpDir,
