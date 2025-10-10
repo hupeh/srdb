@@ -12,7 +12,7 @@
 - [Scan 方法](#scan-方法)
 - [Object 和 Array 类型](#object-和-array-类型)
 - [索引](#索引)
-- [事务和并发](#事务和并发)
+- [并发控制](#并发控制)
 - [性能优化](#性能优化)
 - [错误处理](#错误处理)
 - [最佳实践](#最佳实践)
@@ -22,7 +22,7 @@
 
 ## 概述
 
-SRDB (Simple Row Database) 是一个用 Go 编写的高性能嵌入式数据库，采用 LSM-Tree 架构，专为时序数据和高并发写入场景设计。
+SRDB (Simple Row Database) 是一个用 Go 编写的高性能嵌入式数据库，采用 Append-Only 架构（参考 LSM-Tree 设计理念），专为时序数据和高并发写入场景设计。
 
 ### 核心特性
 
@@ -996,9 +996,7 @@ rows, _ := table.Query().Contains("name", "Alice").Rows()
 
 ---
 
-## 事务和并发
-
-### 并发控制
+## 并发控制
 
 SRDB 使用 **MVCC (多版本并发控制)** 实现无锁并发读写：
 
@@ -1035,18 +1033,6 @@ for i := 0; i < 100; i++ {
 }
 wg.Wait()
 ```
-
-### 事务支持
-
-⚠️ **当前版本不支持显式事务**，但保证：
-- 单条写入的原子性（通过 WAL）
-- 数据持久性（WAL fsync）
-- 崩溃恢复（WAL 重放）
-
-未来版本计划支持：
-- [ ] 显式事务 API
-- [ ] 批量操作的原子性
-- [ ] ACID 保证
 
 ---
 
@@ -1310,34 +1296,52 @@ table.Insert(data)  // 错误未处理
 
 ## 架构细节
 
-### LSM-Tree 结构
+### Append-Only 架构
+
+SRDB 采用 Append-Only 架构（参考 LSM-Tree 设计理念），分为两层：
+
+1. **内存层** - WAL + MemTable (Active + Immutable)
+2. **磁盘层** - 带 B+Tree 索引的 SST 文件，分层存储（L0-L3）
 
 ```
 写入流程：
-数据 → WAL（持久化）→ MemTable → Immutable MemTable → Level 0 SST → Compaction → Level 1-6
+数据 → WAL（持久化）→ MemTable → Flush → SST L0 → Compaction → SST L1-L3
+
+读取流程：
+查询 → MemTable（O(1)）→ Immutable MemTables → SST Files（B+Tree）
 ```
 
 ### 文件组织
 
 ```
 database_dir/
-├── database.meta      # 数据库元数据
-├── MANIFEST           # 版本控制
-└── table_name/
-    ├── schema.json    # 表 Schema
-    ├── MANIFEST       # 表级版本控制
-    ├── 000001.wal     # WAL 文件
-    ├── 000001.sst     # SST 文件
-    ├── 000002.sst
-    └── idx_email.sst  # 索引文件
+├── database.meta        # 数据库元数据
+└── table_name/          # 每表一个目录
+    ├── schema.json      # 表 Schema 定义
+    ├── MANIFEST-000001  # 表级版本控制
+    ├── CURRENT          # 当前 MANIFEST 指针
+    ├── wal/             # WAL 子目录
+    │   ├── 000001.wal   # WAL 文件
+    │   └── CURRENT      # 当前 WAL 指针
+    ├── sst/             # SST 子目录（L0-L3 层级文件）
+    │   └── 000001.sst   # SST 文件（B+Tree + 数据）
+    └── idx/             # 索引子目录
+        └── idx_email.sst # 二级索引文件
 ```
+
+### 设计特点
+
+- **Append-Only** - 无原地更新，简化并发控制
+- **MemTable** - `map[int64][]byte + sorted slice`，O(1) 读写
+- **SST 文件** - 4KB 节点的 B+Tree，mmap 零拷贝访问
+- **二进制编码** - ROW1 格式，无压缩，优先查询性能
+- **Compaction** - 后台异步合并，按层级管理文件大小
 
 ### Compaction 策略
 
-- **Level 0**: 文件数量 ≥ 4 触发
-- **Level 1-6**: 总大小超过阈值触发
+- **Level 0-3**: 文件数量或总大小超过阈值时触发
 - **Score 计算**: `size / max_size` 或 `file_count / max_files`
-- **文件大小**: L0=2MB, L1=10MB, L2=50MB, L3=100MB, L4+=200MB
+- **文件大小**: L0=2MB, L1=10MB, L2=50MB, L3=100MB
 
 ### 性能指标
 
