@@ -35,8 +35,13 @@ testdb/
 *.wal
 *.sst
 
-# Example binaries
+# Example binaries and data
 /examples/*/data/
+/examples/*/*
+!/examples/*/*.go
+!/examples/*/go.mod
+!/examples/*/go.sum
+!/examples/*/README.md
 
 # AI markdown
 /*.md
