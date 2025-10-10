@@ -167,14 +167,10 @@ database_dir/
 ### 核心文档
 
 - [DOCS.md](DOCS.md) - 完整 API 文档和使用指南
-- [CLAUDE.md](CLAUDE.md) - 开发者指南和架构详解
-- [NULLABLE_GUIDE.md](NULLABLE_GUIDE.md) - Nullable 字段使用说明
+- [DESIGN.md](CLAUDE.md) - 数据库设计文档
 
 ### 示例教程
 
-- [Scan 方法指南](examples/scan_demo/README.md) - 扫描到结构体，支持 Object 和 Array
-- [所有类型示例](examples/all_types/) - 21 种类型的完整示例
-- [Nullable 示例](examples/nullable/) - Nullable 字段的使用
 - [WebUI 工具](examples/webui/README.md) - Web 管理界面
 
 ---
