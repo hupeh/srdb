@@ -189,8 +189,8 @@ func encodeSSTableRowBinary(row *SSTableRow, schema *Schema) ([]byte, error) {
 		fieldBuf := new(bytes.Buffer)
 		value, exists := row.Data[field.Name]
 
-		if !exists {
-			// 字段不存在，写入零值
+		if !exists || value == nil {
+			// 字段不存在或值为 nil（nullable 字段），写入零值
 			if err := writeFieldZeroValue(fieldBuf, field.Type); err != nil {
 				return nil, fmt.Errorf("write zero value for field %s: %w", field.Name, err)
 			}

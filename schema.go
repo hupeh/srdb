@@ -247,30 +247,51 @@ func StructToFields(v any) ([]Field, error) {
 		comment := ""
 
 		if tag != "" {
-			// 使用分号分隔各部分
-			parts := strings.Split(tag, ";")
+			// 使用分号分隔各部分，与顺序无关
+			parts := strings.SplitSeq(tag, ";")
 
-			for idx, part := range parts {
+			for part := range parts {
 				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
 
-				if idx == 0 && part != "" {
-					// 第一部分是字段名
-					fieldName = part
+				// 检查是否为 key:value 格式
+				if after, ok := strings.CutPrefix(part, "field:"); ok {
+					// field:字段名
+					fieldName = after
+				} else if after, ok := strings.CutPrefix(part, "comment:"); ok {
+					// comment:注释内容
+					comment = after
 				} else if part == "indexed" {
 					// indexed 标记
 					indexed = true
 				} else if part == "nullable" {
 					// nullable 标记
 					nullable = true
-				} else if after, ok := strings.CutPrefix(part, "comment:"); ok {
-					// comment:注释内容
-					comment = after
 				}
 			}
 		}
 
+		// 检测实际类型（处理指针类型）
+		actualType := field.Type
+		isPointer := false
+
+		// 检测指针类型 (*string, *int64, etc.)
+		if actualType.Kind() == reflect.Pointer {
+			isPointer = true
+			nullable = true // 指针类型自动推断为 nullable
+			actualType = actualType.Elem()
+		}
+
+		// 验证：如果 tag 显式标记了 nullable，字段必须是指针类型
+		if nullable && !isPointer {
+			return nil, fmt.Errorf("field %s: nullable tag requires pointer type (e.g., *%s instead of %s)",
+				field.Name, actualType.String(), actualType.String())
+		}
+
 		// 映射 Go 类型到 FieldType
-		fieldType, err := goTypeToFieldType(field.Type)
+		fieldType, err := goTypeToFieldType(actualType)
 		if err != nil {
 			return nil, fmt.Errorf("field %s: %w", field.Name, err)
 		}
