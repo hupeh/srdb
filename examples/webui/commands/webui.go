@@ -63,16 +63,21 @@ func StartWebUI(dbPath string, addr string) {
 		} else {
 			// 插入一些示例数据
 			users := []map[string]any{
-				{"name": "Alice", "email": "alice@example.com", "age": 30, "city": "Beijing"},
-				{"name": "Bob", "email": "bob@example.com", "age": 25, "city": "Shanghai"},
-				{"name": "Charlie", "email": "charlie@example.com", "age": 35, "city": "Guangzhou"},
-				{"name": "David", "email": "david@example.com", "age": 28, "city": "Shenzhen"},
-				{"name": "Eve", "email": "eve@example.com", "age": 32, "city": "Hangzhou"},
+				{"name": "Alice", "email": "alice@example.com", "age": int64(30), "city": "Beijing"},
+				{"name": "Bob", "email": "bob@example.com", "age": int64(25), "city": "Shanghai"},
+				{"name": "Charlie", "email": "charlie@example.com", "age": int64(35), "city": "Guangzhou"},
+				{"name": "David", "email": "david@example.com", "age": int64(28), "city": "Shenzhen"},
+				{"name": "Eve", "email": "eve@example.com", "age": int64(32), "city": "Hangzhou"},
 			}
+			insertedCount := 0
 			for _, user := range users {
-				table.Insert(user)
+				if err := table.Insert(user); err != nil {
+					log.Printf("Failed to insert user: %v, error: %v", user, err)
+				} else {
+					insertedCount++
+				}
 			}
-			log.Printf("Created users table with %d records", len(users))
+			log.Printf("Created users table with %d/%d records", insertedCount, len(users))
 		}
 	}
 
@@ -83,17 +88,22 @@ func StartWebUI(dbPath string, addr string) {
 		} else {
 			// 插入一些示例数据
 			products := []map[string]any{
-				{"product_name": "Laptop", "price": 999.99, "quantity": 10, "category": "Electronics"},
-				{"product_name": "Mouse", "price": 29.99, "quantity": 50, "category": "Electronics"},
-				{"product_name": "Keyboard", "price": 79.99, "quantity": 30, "category": "Electronics"},
-				{"product_name": "Monitor", "price": 299.99, "quantity": 15, "category": "Electronics"},
-				{"product_name": "Desk", "price": 199.99, "quantity": 5, "category": "Furniture"},
-				{"product_name": "Chair", "price": 149.99, "quantity": 8, "category": "Furniture"},
+				{"product_name": "Laptop", "price": 999.99, "quantity": int64(10), "category": "Electronics"},
+				{"product_name": "Mouse", "price": 29.99, "quantity": int64(50), "category": "Electronics"},
+				{"product_name": "Keyboard", "price": 79.99, "quantity": int64(30), "category": "Electronics"},
+				{"product_name": "Monitor", "price": 299.99, "quantity": int64(15), "category": "Electronics"},
+				{"product_name": "Desk", "price": 199.99, "quantity": int64(5), "category": "Furniture"},
+				{"product_name": "Chair", "price": 149.99, "quantity": int64(8), "category": "Furniture"},
 			}
+			insertedCount := 0
 			for _, product := range products {
-				table.Insert(product)
+				if err := table.Insert(product); err != nil {
+					log.Printf("Failed to insert product: %v, error: %v", product, err)
+				} else {
+					insertedCount++
+				}
 			}
-			log.Printf("Created products table with %d records", len(products))
+			log.Printf("Created products table with %d/%d records", insertedCount, len(products))
 		}
 	}
 

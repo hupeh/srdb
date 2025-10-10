@@ -94,10 +94,8 @@ func (p *Picker) UpdateLevelLimits(l0, l1, l2, l3 int64) {
 }
 
 // getLevelSizeLimit 获取层级大小限制（从配置读取）
+// 注意：层级配置在 UpdateLevelLimits 后不会改变，因此不需要加锁
 func (p *Picker) getLevelSizeLimit(level int) int64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	switch level {
 	case 0:
 		return p.level0SizeLimit
@@ -911,8 +909,8 @@ type CompactionManager struct {
 	sstManager *SSTableManager // 添加 sstManager 引用，用于同步删除 readers
 	sstDir     string
 
-	// 配置（从 Database Options 传递）
-	configMu           sync.RWMutex
+	// 配置（从 Database Options 传递，启动后不可变）
+	configMu           sync.Mutex // 仅用于 ApplyConfig，防御性编程
 	logger             *slog.Logger
 	level0SizeLimit    int64
 	level1SizeLimit    int64
@@ -1017,11 +1015,9 @@ func (m *CompactionManager) Stop() {
 func (m *CompactionManager) backgroundCompaction() {
 	defer m.wg.Done()
 
-	// 使用配置的间隔时间
-	m.configMu.RLock()
+	// Options 是不可变的，配置在启动后不会改变，直接读取即可
 	interval := m.compactionInterval
 	disabled := m.disableCompaction
-	m.configMu.RUnlock()
 
 	if disabled {
 		return // 禁用自动 Compaction，直接退出
@@ -1035,22 +1031,6 @@ func (m *CompactionManager) backgroundCompaction() {
 		case <-m.stopCh:
 			return
 		case <-ticker.C:
-			// 检查配置是否被更新
-			m.configMu.RLock()
-			newInterval := m.compactionInterval
-			disabled := m.disableCompaction
-			m.configMu.RUnlock()
-
-			if disabled {
-				return // 运行中被禁用，退出
-			}
-
-			// 如果间隔时间改变，重新创建 ticker
-			if newInterval != interval {
-				interval = newInterval
-				ticker.Reset(interval)
-			}
-
 			m.maybeCompact()
 		}
 	}
@@ -1435,15 +1415,30 @@ func (m *CompactionManager) GetLevelStats() []LevelStats {
 	return stats
 }
 
+// GetLevelSizeLimit 获取指定层级的大小限制（公开方法，供 WebUI 等外部使用）
+// 注意：Options 是不可变的，配置在 ApplyConfig 后不会改变，因此不需要加锁
+func (m *CompactionManager) GetLevelSizeLimit(level int) int64 {
+	switch level {
+	case 0:
+		return m.level0SizeLimit
+	case 1:
+		return m.level1SizeLimit
+	case 2:
+		return m.level2SizeLimit
+	case 3:
+		return m.level3SizeLimit
+	default:
+		return m.level3SizeLimit
+	}
+}
+
 // backgroundGarbageCollection 后台垃圾回收循环
 func (m *CompactionManager) backgroundGarbageCollection() {
 	defer m.wg.Done()
 
-	// 使用配置的间隔时间
-	m.configMu.RLock()
+	// Options 是不可变的，配置在启动后不会改变，直接读取即可
 	interval := m.gcInterval
 	disabled := m.disableGC
-	m.configMu.RUnlock()
 
 	if disabled {
 		return // 禁用垃圾回收，直接退出
@@ -1457,22 +1452,6 @@ func (m *CompactionManager) backgroundGarbageCollection() {
 		case <-m.stopCh:
 			return
 		case <-ticker.C:
-			// 检查配置是否被更新
-			m.configMu.RLock()
-			newInterval := m.gcInterval
-			disabled := m.disableGC
-			m.configMu.RUnlock()
-
-			if disabled {
-				return // 运行中被禁用，退出
-			}
-
-			// 如果间隔时间改变，重新创建 ticker
-			if newInterval != interval {
-				interval = newInterval
-				ticker.Reset(interval)
-			}
-
 			m.collectOrphanFiles()
 		}
 	}
@@ -1515,10 +1494,8 @@ func (m *CompactionManager) collectOrphanFiles() {
 		// 检查是否是活跃文件
 		if !activeFiles[fileNum] {
 			// 检查文件修改时间，避免删除正在 flush 的文件
-			// 使用配置的文件最小年龄（默认 1 分钟，可能正在 LogAndApply）
-			m.configMu.RLock()
+			// Options 是不可变的，直接读取配置即可
 			minAge := m.gcFileMinAge
-			m.configMu.RUnlock()
 
 			fileInfo, err := os.Stat(sstPath)
 			if err != nil {

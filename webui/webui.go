@@ -214,12 +214,12 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 		Files     []FileInfo `json:"files"`
 	}
 
-	// 获取 Compaction Manager 和 Picker
+	// 获取 Compaction Manager
 	compactionMgr := table.GetCompactionManager()
-	picker := compactionMgr.GetPicker()
 
-	levels := make([]LevelInfo, 0)
+	levels := make([]LevelInfo, 0, 7)
 	for level := range 7 {
+		// 只调用一次 GetLevel，避免重复复制文件列表
 		files := version.GetLevel(level)
 
 		totalSize := int64(0)
@@ -236,9 +236,15 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 			})
 		}
 
+		// 使用已计算的 totalSize 和 fileCount 计算 score，避免再次调用 GetLevel
 		score := 0.0
-		if len(files) > 0 {
-			score = picker.GetLevelScore(version, level)
+		if len(files) > 0 && level < 3 { // L3 是最后一层，不需要 compaction
+			// 直接计算 score，避免调用 picker.GetLevelScore（它会再次获取 files）
+			// 使用下一级的大小限制来计算得分（从 Options 配置读取）
+			nextLevelLimit := compactionMgr.GetLevelSizeLimit(level + 1)
+			if nextLevelLimit > 0 {
+				score = float64(totalSize) / float64(nextLevelLimit)
+			}
 		}
 
 		levels = append(levels, LevelInfo{
