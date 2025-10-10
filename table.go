@@ -3,6 +3,8 @@ package srdb
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -28,6 +30,7 @@ type Table struct {
 	memtableManager   *MemTableManager   // MemTable 管理器
 	versionSet        *VersionSet        // MANIFEST 管理器
 	compactionManager *CompactionManager // Compaction 管理器
+	logger            *slog.Logger       // 日志器
 	seq               atomic.Int64
 	flushMu           sync.Mutex
 
@@ -142,7 +145,11 @@ func OpenTable(opts *TableOptions) (*Table, error) {
 				err := indexMgr.CreateIndex(field.Name)
 				if err != nil {
 					// 索引创建失败，记录警告但不阻塞表创建
-					fmt.Fprintf(os.Stderr, "[WARNING] Failed to create index for field %s: %v\n", field.Name, err)
+					// 此时使用临时 logger（Table 还未完全创建）
+					tmpLogger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+					tmpLogger.Warn("[Table] Failed to create index for field",
+						"field", field.Name,
+						"error", err)
 				}
 			}
 		}
@@ -176,6 +183,7 @@ func OpenTable(opts *TableOptions) (*Table, error) {
 		sstManager:      sstMgr,
 		memtableManager: memMgr,
 		versionSet:      versionSet,
+		logger:          slog.New(slog.NewTextHandler(io.Discard, nil)), // 默认丢弃日志
 	}
 
 	// 先恢复数据（包括从 WAL 恢复）
@@ -444,6 +452,11 @@ func (t *Table) insertSingle(data map[string]any) error {
 	}
 
 	return nil
+}
+
+// SetLogger 设置 logger（由 Database 调用）
+func (t *Table) SetLogger(logger *slog.Logger) {
+	t.logger = logger
 }
 
 // Get 查询数据

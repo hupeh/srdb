@@ -3,6 +3,8 @@ package srdb
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -21,6 +23,9 @@ type Database struct {
 	// 元数据
 	metadata *Metadata
 
+	// 配置选项
+	options *Options
+
 	// 锁
 	mu sync.RWMutex
 }
@@ -38,17 +43,144 @@ type TableInfo struct {
 	CreatedAt int64  `json:"created_at"`
 }
 
-// Open 打开数据库
+// Options 数据库配置选项
+type Options struct {
+	// ========== 基础配置 ==========
+	Dir    string       // 数据库目录（必需）
+	Logger *slog.Logger // 日志器（可选，nil 表示不输出日志）
+
+	// ========== MemTable 配置 ==========
+	MemTableSize     int64         // MemTable 大小限制（字节），默认 64MB
+	AutoFlushTimeout time.Duration // 自动 flush 超时时间，默认 30s，0 表示禁用
+
+	// ========== Compaction 配置 ==========
+	// 层级大小限制
+	Level0SizeLimit int64 // L0 层大小限制，默认 64MB
+	Level1SizeLimit int64 // L1 层大小限制，默认 256MB
+	Level2SizeLimit int64 // L2 层大小限制，默认 512MB
+	Level3SizeLimit int64 // L3 层大小限制，默认 1GB
+
+	// 后台任务间隔
+	CompactionInterval time.Duration // Compaction 检查间隔，默认 10s
+	GCInterval         time.Duration // 垃圾回收检查间隔，默认 5min
+
+	// ========== 高级配置（可选）==========
+	DisableAutoCompaction bool          // 禁用自动 Compaction，默认 false
+	DisableGC             bool          // 禁用垃圾回收，默认 false
+	GCFileMinAge          time.Duration // GC 文件最小年龄，默认 1min
+}
+
+// DefaultOptions 返回默认配置
+func DefaultOptions(dir string) *Options {
+	return &Options{
+		Dir:                   dir,
+		Logger:                nil,                // 默认不输出日志
+		MemTableSize:          64 * 1024 * 1024,   // 64MB
+		AutoFlushTimeout:      30 * time.Second,   // 30s
+		Level0SizeLimit:       64 * 1024 * 1024,   // 64MB
+		Level1SizeLimit:       256 * 1024 * 1024,  // 256MB
+		Level2SizeLimit:       512 * 1024 * 1024,  // 512MB
+		Level3SizeLimit:       1024 * 1024 * 1024, // 1GB
+		CompactionInterval:    10 * time.Second,   // 10s
+		GCInterval:            5 * time.Minute,    // 5min
+		DisableAutoCompaction: false,
+		DisableGC:             false,
+		GCFileMinAge:          1 * time.Minute, // 1min
+	}
+}
+
+// fillDefaults 填充未设置的默认值（修改传入的 opts）
+func (opts *Options) fillDefaults() {
+	// Logger：如果为 nil，创建一个丢弃所有日志的 logger
+	if opts.Logger == nil {
+		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	}
+	if opts.MemTableSize == 0 {
+		opts.MemTableSize = 64 * 1024 * 1024 // 64MB
+	}
+	if opts.AutoFlushTimeout == 0 {
+		opts.AutoFlushTimeout = 30 * time.Second // 30s
+	}
+	if opts.Level0SizeLimit == 0 {
+		opts.Level0SizeLimit = 64 * 1024 * 1024 // 64MB
+	}
+	if opts.Level1SizeLimit == 0 {
+		opts.Level1SizeLimit = 256 * 1024 * 1024 // 256MB
+	}
+	if opts.Level2SizeLimit == 0 {
+		opts.Level2SizeLimit = 512 * 1024 * 1024 // 512MB
+	}
+	if opts.Level3SizeLimit == 0 {
+		opts.Level3SizeLimit = 1024 * 1024 * 1024 // 1GB
+	}
+	if opts.CompactionInterval == 0 {
+		opts.CompactionInterval = 10 * time.Second // 10s
+	}
+	if opts.GCInterval == 0 {
+		opts.GCInterval = 5 * time.Minute // 5min
+	}
+	if opts.GCFileMinAge == 0 {
+		opts.GCFileMinAge = 1 * time.Minute // 1min
+	}
+}
+
+// Validate 验证配置的有效性
+func (opts *Options) Validate() error {
+	if opts.Dir == "" {
+		return NewErrorf(ErrCodeInvalidParam, "database directory cannot be empty")
+	}
+	if opts.MemTableSize < 1*1024*1024 {
+		return NewErrorf(ErrCodeInvalidParam, "MemTableSize must be at least 1MB, got %d", opts.MemTableSize)
+	}
+	if opts.Level0SizeLimit < 1*1024*1024 {
+		return NewErrorf(ErrCodeInvalidParam, "Level0SizeLimit must be at least 1MB, got %d", opts.Level0SizeLimit)
+	}
+	if opts.Level1SizeLimit < opts.Level0SizeLimit {
+		return NewErrorf(ErrCodeInvalidParam, "Level1SizeLimit (%d) must be >= Level0SizeLimit (%d)", opts.Level1SizeLimit, opts.Level0SizeLimit)
+	}
+	if opts.Level2SizeLimit < opts.Level1SizeLimit {
+		return NewErrorf(ErrCodeInvalidParam, "Level2SizeLimit (%d) must be >= Level1SizeLimit (%d)", opts.Level2SizeLimit, opts.Level1SizeLimit)
+	}
+	if opts.Level3SizeLimit < opts.Level2SizeLimit {
+		return NewErrorf(ErrCodeInvalidParam, "Level3SizeLimit (%d) must be >= Level2SizeLimit (%d)", opts.Level3SizeLimit, opts.Level2SizeLimit)
+	}
+	if opts.CompactionInterval < 1*time.Second {
+		return NewErrorf(ErrCodeInvalidParam, "CompactionInterval must be at least 1s, got %v", opts.CompactionInterval)
+	}
+	if opts.GCInterval < 1*time.Minute {
+		return NewErrorf(ErrCodeInvalidParam, "GCInterval must be at least 1min, got %v", opts.GCInterval)
+	}
+	if opts.GCFileMinAge < 0 {
+		return NewErrorf(ErrCodeInvalidParam, "GCFileMinAge cannot be negative, got %v", opts.GCFileMinAge)
+	}
+	return nil
+}
+
+// Open 打开数据库（向后兼容，使用默认配置）
 func Open(dir string) (*Database, error) {
+	return OpenWithOptions(DefaultOptions(dir))
+}
+
+// OpenWithOptions 使用指定配置打开数据库
+func OpenWithOptions(opts *Options) (*Database, error) {
+	// 填充默认值
+	opts.fillDefaults()
+
+	// 验证配置
+	if err := opts.Validate(); err != nil {
+		return nil, err
+	}
+
 	// 创建目录
-	err := os.MkdirAll(dir, 0755)
+	err := os.MkdirAll(opts.Dir, 0755)
 	if err != nil {
 		return nil, err
 	}
 
 	db := &Database{
-		dir:    dir,
-		tables: make(map[string]*Table),
+		dir:     opts.Dir,
+		tables:  make(map[string]*Table),
+		options: opts,
 	}
 
 	// 加载元数据
@@ -111,24 +243,39 @@ func (db *Database) recoverTables() error {
 	for _, tableInfo := range db.metadata.Tables {
 		tableDir := filepath.Join(db.dir, tableInfo.Name)
 		table, err := OpenTable(&TableOptions{
-			Dir:          tableDir,
-			MemTableSize: DefaultMemTableSize,
+			Dir:              tableDir,
+			MemTableSize:     db.options.MemTableSize,
+			AutoFlushTimeout: db.options.AutoFlushTimeout,
 		})
 		if err != nil {
 			// 记录失败的表，但继续恢复其他表
 			failedTables = append(failedTables, tableInfo.Name)
-			fmt.Printf("[WARNING] Failed to open table %s: %v\n", tableInfo.Name, err)
-			fmt.Printf("[WARNING] Table %s will be skipped. You may need to drop and recreate it.\n", tableInfo.Name)
+			db.options.Logger.Warn("[Database] Failed to open table",
+				"table", tableInfo.Name,
+				"error", err)
+			db.options.Logger.Warn("[Database] Table will be skipped. You may need to drop and recreate it.",
+				"table", tableInfo.Name)
 			continue
 		}
+
+		// 设置 Logger
+		table.SetLogger(db.options.Logger)
+
+		// 将数据库级 Compaction 配置应用到表的 CompactionManager
+		if table.compactionManager != nil {
+			table.compactionManager.ApplyConfig(db.options)
+		}
+
 		db.tables[tableInfo.Name] = table
 	}
 
 	// 如果有失败的表，输出汇总信息
 	if len(failedTables) > 0 {
-		fmt.Printf("[WARNING] %d table(s) failed to recover: %v\n", len(failedTables), failedTables)
-		fmt.Printf("[WARNING] To fix: Delete the corrupted table directory and restart.\n")
-		fmt.Printf("[WARNING] Example: rm -rf %s/<table_name>\n", db.dir)
+		db.options.Logger.Warn("[Database] Failed to recover tables",
+			"failed_count", len(failedTables),
+			"failed_tables", failedTables)
+		db.options.Logger.Warn("[Database] To fix: Delete the corrupted table directory and restart",
+			"example", fmt.Sprintf("rm -rf %s/<table_name>", db.dir))
 	}
 
 	return nil
@@ -151,16 +298,25 @@ func (db *Database) CreateTable(name string, schema *Schema) (*Table, error) {
 		return nil, err
 	}
 
-	// 创建表
+	// 创建表（传递数据库级配置）
 	table, err := OpenTable(&TableOptions{
-		Dir:          tableDir,
-		MemTableSize: DefaultMemTableSize,
-		Name:         schema.Name,
-		Fields:       schema.Fields,
+		Dir:              tableDir,
+		MemTableSize:     db.options.MemTableSize,
+		AutoFlushTimeout: db.options.AutoFlushTimeout,
+		Name:             schema.Name,
+		Fields:           schema.Fields,
 	})
 	if err != nil {
 		os.RemoveAll(tableDir)
 		return nil, err
+	}
+
+	// 设置 Logger
+	table.SetLogger(db.options.Logger)
+
+	// 将数据库级 Compaction 配置应用到表的 CompactionManager
+	if table.compactionManager != nil {
+		table.compactionManager.ApplyConfig(db.options)
 	}
 
 	// 添加到 tables map
