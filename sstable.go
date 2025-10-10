@@ -3,6 +3,7 @@ package srdb
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -384,6 +385,36 @@ func writeFieldBinaryValue(buf *bytes.Buffer, typ FieldType, value any) error {
 		// 存储为纳秒（int64）
 		return binary.Write(buf, binary.LittleEndian, int64(v))
 
+	// Object 类型（使用 JSON 编码）
+	case Object:
+		// 使用 JSON 序列化
+		data, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("marshal object: %w", err)
+		}
+		// 写入长度
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
+			return err
+		}
+		// 写入数据
+		_, err = buf.Write(data)
+		return err
+
+	// Array 类型（使用 JSON 编码）
+	case Array:
+		// 使用 JSON 序列化
+		data, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("marshal array: %w", err)
+		}
+		// 写入长度
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
+			return err
+		}
+		// 写入数据
+		_, err = buf.Write(data)
+		return err
+
 	default:
 		return fmt.Errorf("unsupported field type: %d", typ)
 	}
@@ -450,6 +481,24 @@ func writeFieldZeroValue(buf *bytes.Buffer, typ FieldType) error {
 	// 时间间隔类型（零值）
 	case Duration:
 		return binary.Write(buf, binary.LittleEndian, int64(0))
+
+	// Object 类型（零值：空 JSON 对象 {}）
+	case Object:
+		data := []byte("{}")
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
+			return err
+		}
+		_, err := buf.Write(data)
+		return err
+
+	// Array 类型（零值：空 JSON 数组 []）
+	case Array:
+		data := []byte("[]")
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(data))); err != nil {
+			return err
+		}
+		_, err := buf.Write(data)
+		return err
 
 	default:
 		return fmt.Errorf("unsupported field type: %d", typ)
@@ -781,6 +830,44 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		if keep {
 			// 从纳秒转换为 time.Duration
 			return time.Duration(v), nil
+		}
+		return nil, nil
+
+	// Object 类型（使用 JSON 解码）
+	case Object:
+		var length uint32
+		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
+			return nil, err
+		}
+		data := make([]byte, length)
+		if _, err := buf.Read(data); err != nil {
+			return nil, err
+		}
+		if keep {
+			var obj map[string]any
+			if err := json.Unmarshal(data, &obj); err != nil {
+				return nil, fmt.Errorf("unmarshal object: %w", err)
+			}
+			return obj, nil
+		}
+		return nil, nil
+
+	// Array 类型（使用 JSON 解码）
+	case Array:
+		var length uint32
+		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
+			return nil, err
+		}
+		data := make([]byte, length)
+		if _, err := buf.Read(data); err != nil {
+			return nil, err
+		}
+		if keep {
+			var arr []any
+			if err := json.Unmarshal(data, &arr); err != nil {
+				return nil, fmt.Errorf("unmarshal array: %w", err)
+			}
+			return arr, nil
 		}
 		return nil, nil
 

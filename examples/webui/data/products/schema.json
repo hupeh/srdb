@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "timestamp": 1760073183,
+  "checksum": "6bfaccc47c2ff24f377b6536a800591958a3680be4f99e8f78c1d8e22e78afd4",
+  "schema": {
+    "Name": "products",
+    "Fields": [
+      {
+        "Name": "product_name",
+        "Type": 13,
+        "Indexed": true,
+        "Nullable": false,
+        "Comment": "Product name"
+      },
+      {
+        "Name": "price",
+        "Type": 12,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "Price"
+      },
+      {
+        "Name": "quantity",
+        "Type": 5,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "Quantity"
+      },
+      {
+        "Name": "category",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "Category"
+      }
+    ]
+  }
+}

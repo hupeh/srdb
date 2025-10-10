@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"reflect"
 	"strings"
 )
 
@@ -658,7 +659,8 @@ func (r *Row) Scan(value any) error {
 		return fmt.Errorf("row is nil")
 	}
 
-	data, err := json.Marshal(r.inner.Data)
+	// 使用 r.Data() 而不是 r.inner.Data，这样会应用字段过滤
+	data, err := json.Marshal(r.Data())
 	if err != nil {
 		return fmt.Errorf("marshal row data: %w", err)
 	}
@@ -920,18 +922,40 @@ func (r *Rows) Data() []map[string]any {
 }
 
 // Scan 扫描所有行数据到指定的变量
+// 智能判断目标类型：
+//   - 如果目标是切片：扫描所有行
+//   - 如果目标是结构体/指针：只扫描第一行
 func (r *Rows) Scan(value any) error {
-	data, err := json.Marshal(r.Collect())
-	if err != nil {
-		return fmt.Errorf("marshal rows data: %w", err)
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Ptr {
+		return fmt.Errorf("scan target must be a pointer")
 	}
 
-	err = json.Unmarshal(data, value)
-	if err != nil {
-		return fmt.Errorf("unmarshal to target: %w", err)
+	elem := rv.Elem()
+	kind := elem.Kind()
+
+	// 如果目标是切片，扫描所有行
+	if kind == reflect.Slice {
+		data, err := json.Marshal(r.Collect())
+		if err != nil {
+			return fmt.Errorf("marshal rows data: %w", err)
+		}
+
+		err = json.Unmarshal(data, value)
+		if err != nil {
+			return fmt.Errorf("unmarshal to target: %w", err)
+		}
+
+		return nil
 	}
 
-	return nil
+	// 否则，只扫描第一行
+	row, err := r.First()
+	if err != nil {
+		return err
+	}
+
+	return row.Scan(value)
 }
 
 // First 获取第一行

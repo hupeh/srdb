@@ -142,13 +142,14 @@ table, _ := db.CreateTable("users", schema)
 - Schema 在 `Insert()` 时强制验证类型和必填字段
 - 索引字段（`Indexed: true`）自动创建二级索引
 - Schema 持久化到 `table_dir/schema.json`，包含校验和防篡改
-- **支持的类型** (17 种，精确映射到 Go 基础类型):
+- **支持的类型** (21 种，精确映射到 Go 基础类型):
   - **有符号整数** (5种): `Int`, `Int8`, `Int16`, `Int32`, `Int64`
   - **无符号整数** (5种): `Uint`, `Uint8`, `Uint16`, `Uint32`, `Uint64`
   - **浮点数** (2种): `Float32`, `Float64`
   - **字符串** (1种): `String`
   - **布尔** (1种): `Bool`
-  - **特殊类型** (3种): `Byte` (独立类型，底层=uint8), `Rune` (独立类型，底层=int32), `Decimal` (高精度十进制，使用 shopspring/decimal)
+  - **特殊类型** (5种): `Byte` (独立类型，底层=uint8), `Rune` (独立类型，底层=int32), `Decimal` (高精度十进制，使用 shopspring/decimal), `Time` (time.Time), `Duration` (time.Duration)
+  - **复杂类型** (2种): `Object` (map[string]xxx、struct{}、*struct{}，使用 JSON 编码), `Array` ([]xxx 切片，使用 JSON 编码)
 - **Nullable 支持**: 字段可标记为 `Nullable: true`，允许 NULL 值
 
 ### 类型系统详解

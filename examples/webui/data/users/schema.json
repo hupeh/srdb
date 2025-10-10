@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "timestamp": 1760073183,
+  "checksum": "da17386c778ecfe06d2560097e7e6daa241f59de569517db3cca7424aec345f4",
+  "schema": {
+    "Name": "users",
+    "Fields": [
+      {
+        "Name": "name",
+        "Type": 13,
+        "Indexed": true,
+        "Nullable": false,
+        "Comment": "User name"
+      },
+      {
+        "Name": "email",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "Email address"
+      },
+      {
+        "Name": "age",
+        "Type": 5,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "Age"
+      },
+      {
+        "Name": "city",
+        "Type": 13,
+        "Indexed": false,
+        "Nullable": false,
+        "Comment": "City"
+      }
+    ]
+  }
+}

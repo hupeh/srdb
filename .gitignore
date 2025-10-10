@@ -36,11 +36,12 @@ testdb/
 *.sst
 
 # Example binaries
-/examples/webui/data/
+/examples/*/data/
 
 # AI markdown
 /*.md
 !/CLAUDE.md
 !/DESIGN.md
-!/README.md
+!/DOCS.md
 !/LICENSE.md
+!/README.md

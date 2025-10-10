@@ -52,6 +52,10 @@ const (
 	// 时间类型
 	Time     // time.Time 时间戳
 	Duration // time.Duration 时间间隔
+
+	// 复杂类型
+	Object // map[string]xxx、struct{}、*struct{}
+	Array  // 切片类型 []xxx
 )
 
 func (t FieldType) String() string {
@@ -94,6 +98,10 @@ func (t FieldType) String() string {
 		return "time"
 	case Duration:
 		return "duration"
+	case Object:
+		return "object"
+	case Array:
+		return "array"
 	default:
 		return "unknown"
 	}
@@ -370,6 +378,18 @@ func goTypeToFieldType(typ reflect.Type) (FieldType, error) {
 		return String, nil
 	case reflect.Bool:
 		return Bool, nil
+	case reflect.Map:
+		// map[string]xxx → Object
+		if typ.Key().Kind() != reflect.String {
+			return 0, fmt.Errorf("map key must be string, got %s", typ.Key().Kind())
+		}
+		return Object, nil
+	case reflect.Struct:
+		// struct{} → Object (排除特殊类型 time.Time、decimal.Decimal 等已在前面处理)
+		return Object, nil
+	case reflect.Slice:
+		// []xxx → Array
+		return Array, nil
 	default:
 		return 0, fmt.Errorf("unsupported type: %s", typ.Kind())
 	}
@@ -665,6 +685,32 @@ func (s *Schema) validateType(typ FieldType, value any) error {
 			return fmt.Errorf("expected duration type, got %T", value)
 		}
 
+	// Object 类型
+	case Object:
+		v := reflect.ValueOf(value)
+		kind := v.Kind()
+		if kind == reflect.Map {
+			// map[string]xxx
+			if v.Type().Key().Kind() != reflect.String {
+				return fmt.Errorf("expected map[string]xxx, got %T", value)
+			}
+			return nil
+		} else if kind == reflect.Struct {
+			// struct{}
+			return nil
+		} else if kind == reflect.Ptr && v.Elem().Kind() == reflect.Struct {
+			// *struct{}
+			return nil
+		}
+		return fmt.Errorf("expected object type (map[string]xxx, struct{} or *struct{}), got %T", value)
+
+	// Array 类型
+	case Array:
+		if reflect.ValueOf(value).Kind() != reflect.Slice {
+			return fmt.Errorf("expected slice type, got %T", value)
+		}
+		return nil
+
 	default:
 		return fmt.Errorf("unknown field type: %v", typ)
 	}
@@ -750,6 +796,24 @@ func convertValue(value any, targetType FieldType) (any, error) {
 	// 时间间隔类型
 	case Duration:
 		return convertToDuration(value)
+
+	// Object 类型
+	case Object:
+		// Object 类型不需要转换，直接返回
+		v := reflect.ValueOf(value)
+		kind := v.Kind()
+		if kind == reflect.Map || kind == reflect.Struct || (kind == reflect.Ptr && v.Elem().Kind() == reflect.Struct) {
+			return value, nil
+		}
+		return nil, fmt.Errorf("cannot convert %T to object", value)
+
+	// Array 类型
+	case Array:
+		// Array 类型不需要转换，直接返回
+		if reflect.ValueOf(value).Kind() == reflect.Slice {
+			return value, nil
+		}
+		return nil, fmt.Errorf("cannot convert %T to array", value)
 
 	default:
 		return nil, fmt.Errorf("unsupported type: %v", targetType)

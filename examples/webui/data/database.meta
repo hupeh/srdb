@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "tables": [
+    {
+      "name": "users",
+      "dir": "users",
+      "created_at": 1760073183
+    },
+    {
+      "name": "products",
+      "dir": "products",
+      "created_at": 1760073183
+    },
+    {
+      "name": "logs",
+      "dir": "logs",
+      "created_at": 1760073184
+    }
+  ]
+}

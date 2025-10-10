@@ -13,7 +13,8 @@
 - **WAL 持久化** - 写前日志保证数据安全
 - **自动 Compaction** - 智能的多层级数据合并策略
 - **索引支持** - 快速的字段查询能力
-- **Schema 管理** - 灵活的表结构定义
+- **Schema 管理** - 灵活的表结构定义，支持 21 种类型
+- **复杂类型** - 原生支持 Object（map）和 Array（slice）
 
 ### 查询能力
 - **链式查询 API** - 流畅的查询构建器
@@ -21,6 +22,7 @@
 - **复合条件** - `AND`, `OR`, `NOT` 逻辑组合
 - **字段选择** - 按需加载指定字段，优化性能
 - **游标模式** - 惰性加载，支持大数据集遍历
+- **智能 Scan** - 自动扫描到结构体，完整支持复杂类型
 
 ### 管理工具
 - **Web UI** - 现代化的数据库管理界面
@@ -34,10 +36,13 @@
 - [快速开始](#快速开始)
 - [基本用法](#基本用法)
 - [查询 API](#查询-api)
+  - [Scan 方法](#scan-方法---扫描到结构体)
+  - [Object 和 Array 类型](#object-和-array-类型)
 - [Web UI](#web-ui)
 - [架构设计](#架构设计)
 - [性能特点](#性能特点)
 - [开发指南](#开发指南)
+- [文档](#文档)
 
 ---
 
@@ -69,12 +74,15 @@ func main() {
     defer db.Close()
 
     // 2. 定义 Schema
-    schema := srdb.NewSchema("users", []srdb.Field{
-        {Name: "id", Type: srdb.FieldTypeInt64, Indexed: true, Comment: "用户ID"},
-        {Name: "name", Type: srdb.FieldTypeString, Indexed: false, Comment: "用户名"},
-        {Name: "email", Type: srdb.FieldTypeString, Indexed: true, Comment: "邮箱"},
-        {Name: "age", Type: srdb.FieldTypeInt64, Indexed: false, Comment: "年龄"},
+    schema, err := srdb.NewSchema("users", []srdb.Field{
+        {Name: "id", Type: srdb.Int64, Indexed: true, Comment: "用户ID"},
+        {Name: "name", Type: srdb.String, Indexed: false, Comment: "用户名"},
+        {Name: "email", Type: srdb.String, Indexed: true, Comment: "邮箱"},
+        {Name: "age", Type: srdb.Int32, Indexed: false, Comment: "年龄"},
     })
+    if err != nil {
+        log.Fatal(err)
+    }
 
     // 3. 创建表
     table, err := db.CreateTable("users", schema)
@@ -158,33 +166,64 @@ err := table.Update(seq, map[string]any{
 ### Schema 定义
 
 ```go
-schema := srdb.NewSchema("logs", []srdb.Field{
+schema, err := srdb.NewSchema("logs", []srdb.Field{
     {
-        Name:    "group",
-        Type:    srdb.FieldTypeString,
+        Name:    "level",
+        Type:    srdb.String,
         Indexed: true,
-        Comment: "日志分组",
+        Comment: "日志级别",
     },
     {
         Name:    "message",
-        Type:    srdb.FieldTypeString,
+        Type:    srdb.String,
         Indexed: false,
         Comment: "日志内容",
     },
     {
         Name:    "timestamp",
-        Type:    srdb.FieldTypeInt64,
+        Type:    srdb.Int64,
         Indexed: true,
         Comment: "时间戳",
+    },
+    {
+        Name:    "metadata",
+        Type:    srdb.Object,
+        Indexed: false,
+        Comment: "元数据（map）",
+    },
+    {
+        Name:    "tags",
+        Type:    srdb.Array,
+        Indexed: false,
+        Comment: "标签（slice）",
     },
 })
 ```
 
-**支持的字段类型**：
-- `FieldTypeString` - 字符串
-- `FieldTypeInt64` - 64位整数
-- `FieldTypeBool` - 布尔值
-- `FieldTypeFloat64` - 64位浮点数
+**支持的字段类型**（21 种）：
+
+**有符号整数**：
+- `Int`, `Int8`, `Int16`, `Int32`, `Int64`
+
+**无符号整数**：
+- `Uint`, `Uint8`, `Uint16`, `Uint32`, `Uint64`
+
+**浮点数**：
+- `Float32`, `Float64`
+
+**基础类型**：
+- `String` - 字符串
+- `Bool` - 布尔值
+- `Byte` - 字节（uint8）
+- `Rune` - 字符（int32）
+
+**特殊类型**：
+- `Decimal` - 高精度十进制（需要 shopspring/decimal）
+- `Time` - 时间戳（time.Time）
+
+**复杂类型**：
+- `Object` - 对象（map[string]xxx、struct{}、*struct{}）
+- `Array` - 数组（[]xxx 切片）
 
 ---
 
@@ -288,11 +327,50 @@ data := rows.Collect()
 
 // 获取总数
 count := rows.Count()
-
-// 扫描到结构体
-var users []User
-err := rows.Scan(&users)
 ```
+
+### Scan 方法 - 扫描到结构体
+
+SRDB 提供智能的 Scan 方法，完整支持 Object 和 Array 类型：
+
+```go
+// 定义结构体
+type User struct {
+    Name     string            `json:"name"`
+    Email    string            `json:"email"`
+    Settings map[string]string `json:"settings"`  // Object 类型
+    Tags     []string          `json:"tags"`      // Array 类型
+}
+
+// 扫描多行到切片
+var users []User
+table.Query().Scan(&users)
+
+// 扫描单行到结构体（智能判断）
+var user User
+table.Query().Eq("name", "Alice").Scan(&user)
+
+// Row.Scan - 扫描当前行
+row, _ := table.Query().First()
+var user User
+row.Scan(&user)
+
+// 部分字段扫描（性能优化）
+type UserBrief struct {
+    Name  string   `json:"name"`
+    Email string   `json:"email"`
+}
+var briefs []UserBrief
+table.Query().Select("name", "email").Scan(&briefs)
+```
+
+**Scan 特性**：
+- ✅ 智能判断目标类型（切片 vs 结构体）
+- ✅ 完整支持 Object（map）和 Array（slice）类型
+- ✅ 支持嵌套结构
+- ✅ 结合 Select() 优化性能
+
+详细示例：[examples/scan_demo](examples/scan_demo/README.md)
 
 ### 完整的操作符列表
 
@@ -316,6 +394,61 @@ err := rows.Scan(&users)
 | `NOT ENDS WITH` | `NotEndsWith(field, suffix)` | 不以...结尾 |
 | `IS NULL` | `IsNull(field)` | 为空 |
 | `IS NOT NULL` | `NotNull(field)` | 不为空 |
+
+### Object 和 Array 类型
+
+SRDB 支持复杂的数据类型，可以存储 JSON 风格的对象和数组：
+
+```go
+// 定义包含复杂类型的表
+type Article struct {
+    Title    string         `srdb:"field:title"`
+    Content  string         `srdb:"field:content"`
+    Tags     []string       `srdb:"field:tags"`       // Array 类型
+    Metadata map[string]any `srdb:"field:metadata"`   // Object 类型
+    Authors  []string       `srdb:"field:authors"`    // Array 类型
+}
+
+// 使用 StructToFields 自动生成 Schema
+fields, _ := srdb.StructToFields(Article{})
+schema, _ := srdb.NewSchema("articles", fields)
+table, _ := db.CreateTable("articles", schema)
+
+// 插入数据
+table.Insert(map[string]any{
+    "title":   "SRDB 使用指南",
+    "content": "...",
+    "tags":    []any{"database", "golang", "lsm-tree"},
+    "metadata": map[string]any{
+        "category": "tech",
+        "views":    1250,
+        "featured": true,
+    },
+    "authors": []any{"Alice", "Bob"},
+})
+
+// 查询和扫描
+var article Article
+table.Query().Eq("title", "SRDB 使用指南").Scan(&article)
+
+fmt.Println(article.Tags)                    // ["database", "golang", "lsm-tree"]
+fmt.Println(article.Metadata["category"])   // "tech"
+fmt.Println(article.Metadata["views"])      // 1250
+```
+
+**支持的场景**：
+- ✅ `map[string]xxx` - 任意键值对
+- ✅ `struct{}` - 结构体（自动转换为 Object）
+- ✅ `*struct{}` - 结构体指针
+- ✅ `[]xxx` - 任意类型的切片
+- ✅ 嵌套的 Object 和 Array
+- ✅ 空对象 `{}` 和空数组 `[]`
+
+**存储细节**：
+- Object 和 Array 使用 JSON 编码存储
+- 存储格式：`[length: uint32][JSON data]`
+- 零值：Object 为 `{}`，Array 为 `[]`
+- 支持任意嵌套深度
 
 ---
 
@@ -497,9 +630,17 @@ go build -o webui main.go
 
 ## 📚 文档
 
+### 核心文档
 - [设计文档](DESIGN.md) - 详细的架构设计和实现原理
-- [WebUI 文档](examples/webui/README.md) - Web 管理界面使用指南
+- [CLAUDE.md](CLAUDE.md) - 完整的开发者指南
+- [Nullable 指南](NULLABLE_GUIDE.md) - Nullable 字段使用说明
 - [API 文档](https://pkg.go.dev/code.tczkiot.com/wlw/srdb) - Go API 参考
+
+### 示例和教程
+- [Scan 方法指南](examples/scan_demo/README.md) - 扫描到结构体，支持 Object 和 Array
+- [WebUI 工具](examples/webui/README.md) - Web 管理界面使用指南
+- [所有类型示例](examples/all_types/) - 21 种类型的完整示例
+- [Nullable 示例](examples/nullable/) - Nullable 字段的使用
 
 ---
 
