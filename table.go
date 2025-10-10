@@ -134,6 +134,20 @@ func OpenTable(opts *TableOptions) (*Table, error) {
 	// 创建索引管理器
 	indexMgr := NewIndexManager(idxDir, sch)
 
+	// 自动为 Schema 中标记 Indexed 的字段创建索引
+	for _, field := range sch.Fields {
+		if field.Indexed {
+			// 检查索引是否已存在（避免重复创建）
+			if _, exists := indexMgr.GetIndex(field.Name); !exists {
+				err := indexMgr.CreateIndex(field.Name)
+				if err != nil {
+					// 索引创建失败，记录警告但不阻塞表创建
+					fmt.Fprintf(os.Stderr, "[WARNING] Failed to create index for field %s: %v\n", field.Name, err)
+				}
+			}
+		}
+	}
+
 	// 创建 SST Manager
 	sstMgr, err := NewSSTableManager(sstDir)
 	if err != nil {
@@ -238,7 +252,7 @@ func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
 	typ := reflect.TypeOf(data)
 
 	// 如果是指针，解引用
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("data pointer cannot be nil")
 		}
@@ -269,7 +283,7 @@ func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
 		}
 
 		// []*struct{} 或 []struct{}
-		if elemType.Kind() == reflect.Ptr {
+		if elemType.Kind() == reflect.Pointer {
 			elemType = elemType.Elem()
 		}
 
@@ -279,7 +293,7 @@ func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
 			for i := 0; i < val.Len(); i++ {
 				elem := val.Index(i)
 				// 如果是指针，解引用
-				if elem.Kind() == reflect.Ptr {
+				if elem.Kind() == reflect.Pointer {
 					if elem.IsNil() {
 						continue // 跳过 nil 指针
 					}
@@ -315,7 +329,7 @@ func (t *Table) structToMap(v any) (map[string]any, error) {
 	val := reflect.ValueOf(v)
 	typ := reflect.TypeOf(v)
 
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		val = val.Elem()
 		typ = val.Type()
 	}
