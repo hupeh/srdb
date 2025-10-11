@@ -268,12 +268,15 @@ func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
 		typ = val.Type()
 	}
 
+	// 获取解引用后的实际值
+	actualData := val.Interface()
+
 	switch typ.Kind() {
 	case reflect.Map:
 		// map[string]any - 单条
-		m, ok := data.(map[string]any)
+		m, ok := actualData.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("expected map[string]any, got %T", data)
+			return nil, fmt.Errorf("expected map[string]any, got %T", actualData)
 		}
 		return []map[string]any{m}, nil
 
@@ -283,9 +286,9 @@ func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
 
 		// []map[string]any
 		if elemType.Kind() == reflect.Map {
-			maps, ok := data.([]map[string]any)
+			maps, ok := actualData.([]map[string]any)
 			if !ok {
-				return nil, fmt.Errorf("expected []map[string]any, got %T", data)
+				return nil, fmt.Errorf("expected []map[string]any, got %T", actualData)
 			}
 			return maps, nil
 		}
@@ -321,14 +324,14 @@ func (t *Table) normalizeInsertData(data any) ([]map[string]any, error) {
 
 	case reflect.Struct:
 		// struct{} - 单个结构体
-		m, err := t.structToMap(data)
+		m, err := t.structToMap(actualData)
 		if err != nil {
 			return nil, err
 		}
 		return []map[string]any{m}, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported data type: %T (kind: %s)", data, typ.Kind())
+		return nil, fmt.Errorf("unsupported data type: %T (kind: %s)", actualData, typ.Kind())
 	}
 }
 
@@ -356,32 +359,47 @@ func (t *Table) structToMap(v any) (map[string]any, error) {
 			continue
 		}
 
-		// 获取字段名
-		fieldName := field.Name
+		// 解析 srdb tag
 		tag := field.Tag.Get("srdb")
-
-		// 跳过忽略的字段
 		if tag == "-" {
+			// 忽略该字段
 			continue
 		}
 
-		// 解析 tag 获取字段名
+		// 默认使用 snake_case 转换字段名
+		fieldName := camelToSnake(field.Name)
+
+		// 解析 tag（与 StructToFields 保持一致）
 		if tag != "" {
 			parts := strings.Split(tag, ";")
-			if parts[0] != "" {
-				fieldName = parts[0]
-			} else {
-				// 使用 snake_case 转换
-				fieldName = camelToSnake(field.Name)
+			for _, part := range parts {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+
+				// 检查是否为 field:xxx 格式
+				if strings.HasPrefix(part, "field:") {
+					fieldName = strings.TrimPrefix(part, "field:")
+					break // 找到字段名，停止解析
+				}
+				// 忽略其他标记（indexed, nullable, comment:xxx）
 			}
-		} else {
-			// 没有 tag，使用 snake_case 转换
-			fieldName = camelToSnake(field.Name)
 		}
 
 		// 获取字段值
 		fieldVal := val.Field(i)
-		result[fieldName] = fieldVal.Interface()
+
+		// 处理指针类型：如果是指针，解引用（nil 保持为 nil）
+		if fieldVal.Kind() == reflect.Pointer {
+			if fieldVal.IsNil() {
+				result[fieldName] = nil
+			} else {
+				result[fieldName] = fieldVal.Elem().Interface()
+			}
+		} else {
+			result[fieldName] = fieldVal.Interface()
+		}
 	}
 
 	return result, nil
