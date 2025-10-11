@@ -770,6 +770,13 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 			return nil, err
 		}
+		if length == 0 {
+			// 空字符串，直接返回
+			if keep {
+				return "", nil
+			}
+			return nil, nil
+		}
 		str := make([]byte, length)
 		if _, err := buf.Read(str); err != nil {
 			return nil, err
@@ -795,6 +802,13 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		var length uint32
 		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 			return nil, err
+		}
+		if length == 0 {
+			// 零值 Decimal
+			if keep {
+				return decimal.Zero, nil
+			}
+			return nil, nil
 		}
 		data := make([]byte, length)
 		if _, err := buf.Read(data); err != nil {
@@ -839,6 +853,13 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 			return nil, err
 		}
+		if length == 0 {
+			// 空对象
+			if keep {
+				return map[string]any{}, nil
+			}
+			return nil, nil
+		}
 		data := make([]byte, length)
 		if _, err := buf.Read(data); err != nil {
 			return nil, err
@@ -857,6 +878,13 @@ func readFieldBinaryValue(buf *bytes.Reader, typ FieldType, keep bool) (any, err
 		var length uint32
 		if err := binary.Read(buf, binary.LittleEndian, &length); err != nil {
 			return nil, err
+		}
+		if length == 0 {
+			// 空数组
+			if keep {
+				return []any{}, nil
+			}
+			return nil, nil
 		}
 		data := make([]byte, length)
 		if _, err := buf.Read(data); err != nil {
