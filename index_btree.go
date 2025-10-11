@@ -530,6 +530,55 @@ func (r *IndexBTreeReader) GetMetadata() IndexMetadata {
 	}
 }
 
+// IndexEntryCallback 索引条目回调函数
+// 参数：value 字段值，seqs 对应的 seq 列表
+// 返回：true 继续迭代，false 停止迭代
+type IndexEntryCallback func(value string, seqs []int64) bool
+
+// ForEach 升序迭代所有索引条目
+// callback 返回 false 时停止迭代，支持提前终止
+func (r *IndexBTreeReader) ForEach(callback IndexEntryCallback) {
+	r.btree.ForEach(func(key int64, dataOffset int64, dataSize int32) bool {
+		// 读取数据块（零拷贝）
+		if dataOffset+int64(dataSize) > int64(len(r.mmap)) {
+			return false // 数据越界，停止迭代
+		}
+
+		binaryData := r.mmap[dataOffset : dataOffset+int64(dataSize)]
+
+		// 解码二进制数据
+		value, seqs, err := decodeIndexEntry(binaryData)
+		if err != nil {
+			return false // 解码失败，停止迭代
+		}
+
+		// 调用用户回调
+		return callback(value, seqs)
+	})
+}
+
+// ForEachDesc 降序迭代所有索引条目
+// callback 返回 false 时停止迭代，支持提前终止
+func (r *IndexBTreeReader) ForEachDesc(callback IndexEntryCallback) {
+	r.btree.ForEachDesc(func(key int64, dataOffset int64, dataSize int32) bool {
+		// 读取数据块（零拷贝）
+		if dataOffset+int64(dataSize) > int64(len(r.mmap)) {
+			return false // 数据越界，停止迭代
+		}
+
+		binaryData := r.mmap[dataOffset : dataOffset+int64(dataSize)]
+
+		// 解码二进制数据
+		value, seqs, err := decodeIndexEntry(binaryData)
+		if err != nil {
+			return false // 解码失败，停止迭代
+		}
+
+		// 调用用户回调
+		return callback(value, seqs)
+	})
+}
+
 // Close 关闭读取器
 func (r *IndexBTreeReader) Close() error {
 	if r.mmap != nil {

@@ -410,14 +410,40 @@ func (t *Table) insertSingle(data map[string]any) error {
 		return NewError(ErrCodeSchemaValidationFailed, err)
 	}
 
-	// 2. 生成 _seq
+	// 2. 类型转换：将数据转换为 Schema 定义的类型
+	// 这样可以确保写入时的类型与 Schema 一致（例如将 int64 转换为 time.Time）
+	convertedData := make(map[string]any, len(data))
+	for key, value := range data {
+		// 跳过 nil 值
+		if value == nil {
+			convertedData[key] = nil
+			continue
+		}
+
+		// 获取字段定义
+		field, err := t.schema.GetField(key)
+		if err != nil {
+			// 字段不在 Schema 中，保持原值
+			convertedData[key] = value
+			continue
+		}
+
+		// 使用 Schema 的类型转换
+		converted, err := convertValue(value, field.Type)
+		if err != nil {
+			return NewErrorf(ErrCodeSchemaValidationFailed, "convert field %s: %v", key, err)
+		}
+		convertedData[key] = converted
+	}
+
+	// 3. 生成 _seq
 	seq := t.seq.Add(1)
 
-	// 3. 添加系统字段
+	// 4. 添加系统字段
 	row := &SSTableRow{
 		Seq:  seq,
 		Time: time.Now().UnixNano(),
-		Data: data,
+		Data: convertedData,
 	}
 
 	// 3. 序列化（使用二进制格式，保留类型信息）
@@ -950,6 +976,16 @@ func (t *Table) DropIndex(field string) error {
 // ListIndexes 列出所有索引
 func (t *Table) ListIndexes() []string {
 	return t.indexManager.ListIndexes()
+}
+
+// GetIndex 获取指定字段的索引
+func (t *Table) GetIndex(field string) (*SecondaryIndex, bool) {
+	return t.indexManager.GetIndex(field)
+}
+
+// BuildIndexes 构建所有索引
+func (t *Table) BuildIndexes() error {
+	return t.indexManager.BuildAll()
 }
 
 // GetIndexMetadata 获取索引元数据

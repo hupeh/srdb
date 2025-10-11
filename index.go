@@ -274,6 +274,46 @@ func (idx *SecondaryIndex) GetMetadata() IndexMetadata {
 	return idx.metadata
 }
 
+// ForEach 升序迭代所有索引条目
+// callback 返回 false 时停止迭代，支持提前终止
+// 注意：只能迭代已持久化的数据（B+Tree），不包括内存中未持久化的数据
+func (idx *SecondaryIndex) ForEach(callback IndexEntryCallback) error {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	if !idx.ready {
+		return fmt.Errorf("index not ready")
+	}
+
+	// 只支持 B+Tree 格式的索引
+	if !idx.useBTree || idx.btreeReader == nil {
+		return fmt.Errorf("ForEach only supports B+Tree format indexes")
+	}
+
+	idx.btreeReader.ForEach(callback)
+	return nil
+}
+
+// ForEachDesc 降序迭代所有索引条目
+// callback 返回 false 时停止迭代，支持提前终止
+// 注意：只能迭代已持久化的数据（B+Tree），不包括内存中未持久化的数据
+func (idx *SecondaryIndex) ForEachDesc(callback IndexEntryCallback) error {
+	idx.mu.RLock()
+	defer idx.mu.RUnlock()
+
+	if !idx.ready {
+		return fmt.Errorf("index not ready")
+	}
+
+	// 只支持 B+Tree 格式的索引
+	if !idx.useBTree || idx.btreeReader == nil {
+		return fmt.Errorf("ForEachDesc only supports B+Tree format indexes")
+	}
+
+	idx.btreeReader.ForEachDesc(callback)
+	return nil
+}
+
 // NeedsUpdate 检查是否需要更新
 func (idx *SecondaryIndex) NeedsUpdate(currentMaxSeq int64) bool {
 	idx.mu.RLock()

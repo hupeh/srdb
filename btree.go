@@ -52,7 +52,7 @@ B+Tree 用于索引 SSTable 和 Index 文件，提供 O(log n) 查询性能。
   [Header: 32B]
   [Keys: Key0(8B), Key1(8B), Key2(8B)]
   [Children: Child0(8B), Child1(8B), Child2(8B), Child3(8B)]
-  
+
   查询规则:
     - key < Key0  → Child0
     - Key0 ≤ key < Key1 → Child1
@@ -144,27 +144,29 @@ func NewLeafNode() *BTreeNode {
 // Marshal 序列化节点到 4 KB
 //
 // 布局：
-//   [Header: 32B]
-//   [Keys: KeyCount * 8B]
-//   [Values: 取决于节点类型]
-//     - Internal: Children (KeyCount+1) * 8B
-//     - Leaf: 交错存储 (Offset, Size) 对，每对 12B，共 KeyCount * 12B
+//
+//	[Header: 32B]
+//	[Keys: KeyCount * 8B]
+//	[Values: 取决于节点类型]
+//	  - Internal: Children (KeyCount+1) * 8B
+//	  - Leaf: 交错存储 (Offset, Size) 对，每对 12B，共 KeyCount * 12B
 //
 // 示例（叶子节点，KeyCount=3）：
-//   Offset | Size | Content
-//   -------|------|----------------------------------
-//   0      | 1    | NodeType = 1 (Leaf)
-//   1      | 2    | KeyCount = 3
-//   3      | 1    | Level = 0
-//   4      | 28   | Reserved
-//   32     | 24   | Keys [100, 200, 300]
-//   56     | 8    | DataOffset0 = 1000
-//   64     | 4    | DataSize0 = 50
-//   68     | 8    | DataOffset1 = 2000
-//   76     | 4    | DataSize1 = 60
-//   80     | 8    | DataOffset2 = 3000
-//   88     | 4    | DataSize2 = 70
-//   92     | 4004 | Padding (unused)
+//
+//	Offset | Size | Content
+//	-------|------|----------------------------------
+//	0      | 1    | NodeType = 1 (Leaf)
+//	1      | 2    | KeyCount = 3
+//	3      | 1    | Level = 0
+//	4      | 28   | Reserved
+//	32     | 24   | Keys [100, 200, 300]
+//	56     | 8    | DataOffset0 = 1000
+//	64     | 4    | DataSize0 = 50
+//	68     | 8    | DataOffset1 = 2000
+//	76     | 4    | DataSize1 = 60
+//	80     | 8    | DataOffset2 = 3000
+//	88     | 4    | DataSize2 = 70
+//	92     | 4004 | Padding (unused)
 func (n *BTreeNode) Marshal() []byte {
 	buf := make([]byte, BTreeNodeSize)
 
@@ -213,10 +215,12 @@ func (n *BTreeNode) Marshal() []byte {
 // UnmarshalBTree 从字节数组反序列化节点
 //
 // 参数：
-//   data: 4KB 节点数据（通常来自 mmap）
+//
+//	data: 4KB 节点数据（通常来自 mmap）
 //
 // 返回：
-//   *BTreeNode: 反序列化后的节点
+//
+//	*BTreeNode: 反序列化后的节点
 //
 // 零拷贝优化：
 //   - 直接从 mmap 数据读取，不复制整个节点
@@ -310,15 +314,16 @@ func (n *BTreeNode) AddData(key int64, offset int64, size int32) error {
 // BTreeBuilder 从下往上构建 B+Tree
 //
 // 构建流程：
-//   1. Add(): 添加所有 (key, offset, size) 到叶子节点
-//      - 当叶子节点满时，创建新的叶子节点
-//      - 所有叶子节点按 key 有序
 //
-//   2. Build(): 从叶子层向上构建
-//      - Level 0: 叶子节点（已创建）
-//      - Level 1: 为叶子节点创建父节点（内部节点）
-//      - Level 2+: 递归创建更高层级
-//      - 最终返回根节点偏移量
+//  1. Add(): 添加所有 (key, offset, size) 到叶子节点
+//     - 当叶子节点满时，创建新的叶子节点
+//     - 所有叶子节点按 key 有序
+//
+//  2. Build(): 从叶子层向上构建
+//     - Level 0: 叶子节点（已创建）
+//     - Level 1: 为叶子节点创建父节点（内部节点）
+//     - Level 2+: 递归创建更高层级
+//     - 最终返回根节点偏移量
 //
 // 示例（100 个 key，Order=200）：
 //   - 叶子层: 1 个叶子节点（100 个 key）
@@ -453,13 +458,13 @@ func (b *BTreeBuilder) buildLevel(children []*BTreeNode, childOffsets []int64, l
 // BTreeReader 用于查询 B+Tree (mmap)
 //
 // 查询流程：
-//   1. 从根节点开始
-//   2. 如果是内部节点：
-//      - 二分查找确定子节点
-//      - 跳转到子节点继续查找
-//   3. 如果是叶子节点：
-//      - 二分查找 key
-//      - 返回 (dataOffset, dataSize)
+//  1. 从根节点开始
+//  2. 如果是内部节点：
+//     - 二分查找确定子节点
+//     - 跳转到子节点继续查找
+//  3. 如果是叶子节点：
+//     - 二分查找 key
+//     - 返回 (dataOffset, dataSize)
 //
 // 性能优化：
 //   - mmap 零拷贝：直接从内存映射读取节点
@@ -485,17 +490,19 @@ func NewBTreeReader(mmap mmap.MMap, rootOffset int64) *BTreeReader {
 // Get 查询 key，返回数据位置
 //
 // 参数：
-//   key: 要查询的 key
+//
+//	key: 要查询的 key
 //
 // 返回：
-//   dataOffset: 数据块的文件偏移量
-//   dataSize: 数据块的大小
-//   found: 是否找到
+//
+//	dataOffset: 数据块的文件偏移量
+//	dataSize: 数据块的大小
+//	found: 是否找到
 //
 // 查询流程：
-//   1. 从根节点开始遍历
-//   2. 内部节点：二分查找确定子节点，跳转
-//   3. 叶子节点：二分查找 key，返回数据位置
+//  1. 从根节点开始遍历
+//  2. 内部节点：二分查找确定子节点，跳转
+//  3. 叶子节点：二分查找 key，返回数据位置
 func (r *BTreeReader) Get(key int64) (dataOffset int64, dataSize int32, found bool) {
 	if r.rootOffset == 0 {
 		return 0, 0, false
@@ -543,7 +550,7 @@ func (r *BTreeReader) Get(key int64) (dataOffset int64, dataSize int32, found bo
 	}
 }
 
-// GetAllKeys 获取 B+Tree 中所有的 key（按顺序）
+// GetAllKeys 获取 B+Tree 中所有的 key（按升序）
 func (r *BTreeReader) GetAllKeys() []int64 {
 	if r.rootOffset == 0 {
 		return nil
@@ -562,7 +569,217 @@ func (r *BTreeReader) GetAllKeys() []int64 {
 	return keys
 }
 
-// traverseLeafNodes 遍历所有叶子节点
+// GetAllKeysDesc 获取 B+Tree 中所有的 key（按降序）
+//
+// 性能优化：
+//   - 从右到左遍历叶子节点
+//   - 每个叶子节点内从后往前读取 keys
+//   - 避免额外的排序操作
+func (r *BTreeReader) GetAllKeysDesc() []int64 {
+	if r.rootOffset == 0 {
+		return nil
+	}
+
+	var keys []int64
+	r.traverseLeafNodesReverse(r.rootOffset, func(node *BTreeNode) {
+		// 从后往前添加 keys
+		for i := len(node.Keys) - 1; i >= 0; i-- {
+			keys = append(keys, node.Keys[i])
+		}
+	})
+
+	return keys
+}
+
+// KeyCallback 迭代回调函数
+//
+// 参数：
+//   - key: 当前的 key（序列号）
+//   - dataOffset: 数据块的文件偏移量
+//   - dataSize: 数据块的大小
+//
+// 返回：
+//   - true: 继续迭代
+//   - false: 停止迭代
+type KeyCallback func(key int64, dataOffset int64, dataSize int32) bool
+
+// ForEach 升序迭代所有 key（支持提前终止）
+//
+// 使用场景：
+//   - 需要遍历数据但不想一次性加载所有 keys（节省内存）
+//   - 支持条件过滤，找到目标后提前终止
+//   - 支持外部自定义处理逻辑
+//
+// 示例：
+//
+//	// 找到第一个 > 100 的 key
+//	reader.ForEach(func(key int64, offset int64, size int32) bool {
+//	    if key > 100 {
+//	        fmt.Printf("Found: %d\n", key)
+//	        return false // 停止迭代
+//	    }
+//	    return true // 继续
+//	})
+func (r *BTreeReader) ForEach(callback KeyCallback) {
+	if r.rootOffset == 0 {
+		return
+	}
+
+	r.forEachInternal(r.rootOffset, callback, false)
+}
+
+// ForEachDesc 降序迭代所有 key（支持提前终止）
+//
+// 使用场景：
+//   - 从最新数据开始遍历（时序数据库常见需求）
+//   - 查找最近的 N 条记录
+//   - 支持条件过滤和提前终止
+//
+// 示例：
+//
+//	// 获取最新的 10 条记录
+//	count := 0
+//	reader.ForEachDesc(func(key int64, offset int64, size int32) bool {
+//	    fmt.Printf("Key: %d\n", key)
+//	    count++
+//	    return count < 10 // 找到 10 条后停止
+//	})
+func (r *BTreeReader) ForEachDesc(callback KeyCallback) {
+	if r.rootOffset == 0 {
+		return
+	}
+
+	r.forEachInternal(r.rootOffset, callback, true)
+}
+
+// forEachInternal 内部迭代实现（支持升序和降序）
+//
+// 性能优化（真正的按需读取）：
+//   - 只读取节点 header（32 bytes）确定节点类型和 key 数量
+//   - 对于叶子节点，逐个读取 key、offset、size，避免一次性读取所有数据
+//   - 对于内部节点，逐个读取 child offset，支持提前终止
+//   - 如果回调在第 N 个 key 返回 false，只会读取前 N 个 key
+//
+// 参数：
+//   - nodeOffset: 当前节点的文件偏移量
+//   - callback: 回调函数
+//   - reverse: true=降序, false=升序
+//
+// 返回：
+//   - true: 继续迭代
+//   - false: 停止迭代（外部请求或遍历完成）
+func (r *BTreeReader) forEachInternal(nodeOffset int64, callback KeyCallback, reverse bool) bool {
+	if nodeOffset+BTreeNodeSize > int64(len(r.mmap)) {
+		return true // 无效节点，继续其他分支
+	}
+
+	nodeData := r.mmap[nodeOffset : nodeOffset+BTreeNodeSize]
+
+	// 只读取 header（32 bytes）
+	if len(nodeData) < BTreeHeaderSize {
+		return true
+	}
+
+	nodeType := nodeData[0]
+	keyCount := int(binary.LittleEndian.Uint16(nodeData[1:3]))
+
+	if nodeType == BTreeNodeTypeLeaf {
+		// 叶子节点：按需逐个读取 key 和 data
+		// 布局：[Header: 32B][Keys: keyCount*8B][Data: (offset,size) pairs]
+
+		keysStartOffset := BTreeHeaderSize
+		dataStartOffset := keysStartOffset + keyCount*8
+
+		if reverse {
+			// 降序：从后往前读取
+			for i := keyCount - 1; i >= 0; i-- {
+				// 读取 key
+				keyOffset := keysStartOffset + i*8
+				if keyOffset+8 > len(nodeData) {
+					break
+				}
+				key := int64(binary.LittleEndian.Uint64(nodeData[keyOffset : keyOffset+8]))
+
+				// 读取 dataOffset 和 dataSize（交错存储，每对 12 bytes）
+				dataOffset := dataStartOffset + i*12
+				if dataOffset+12 > len(nodeData) {
+					break
+				}
+				offset := int64(binary.LittleEndian.Uint64(nodeData[dataOffset : dataOffset+8]))
+				size := int32(binary.LittleEndian.Uint32(nodeData[dataOffset+8 : dataOffset+12]))
+
+				// 调用回调，如果返回 false 则立即停止（真正的按需读取）
+				if !callback(key, offset, size) {
+					return false
+				}
+			}
+		} else {
+			// 升序：从前往后读取
+			for i := range keyCount {
+				// 读取 key
+				keyOffset := keysStartOffset + i*8
+				if keyOffset+8 > len(nodeData) {
+					break
+				}
+				key := int64(binary.LittleEndian.Uint64(nodeData[keyOffset : keyOffset+8]))
+
+				// 读取 dataOffset 和 dataSize
+				dataOffset := dataStartOffset + i*12
+				if dataOffset+12 > len(nodeData) {
+					break
+				}
+				offset := int64(binary.LittleEndian.Uint64(nodeData[dataOffset : dataOffset+8]))
+				size := int32(binary.LittleEndian.Uint32(nodeData[dataOffset+8 : dataOffset+12]))
+
+				// 调用回调，如果返回 false 则立即停止
+				if !callback(key, offset, size) {
+					return false
+				}
+			}
+		}
+		return true
+	}
+
+	// 内部节点：按需逐个读取 child offset
+	// 布局：[Header: 32B][Keys: keyCount*8B][Children: (keyCount+1)*8B]
+
+	childCount := keyCount + 1
+	childrenStartOffset := BTreeHeaderSize + keyCount*8
+
+	if reverse {
+		// 降序：从右到左遍历子节点
+		for i := childCount - 1; i >= 0; i-- {
+			childOffset := childrenStartOffset + i*8
+			if childOffset+8 > len(nodeData) {
+				break
+			}
+			childPtr := int64(binary.LittleEndian.Uint64(nodeData[childOffset : childOffset+8]))
+
+			// 递归遍历子树，如果子树请求停止则立即返回
+			if !r.forEachInternal(childPtr, callback, reverse) {
+				return false
+			}
+		}
+	} else {
+		// 升序：从左到右遍历子节点
+		for i := range childCount {
+			childOffset := childrenStartOffset + i*8
+			if childOffset+8 > len(nodeData) {
+				break
+			}
+			childPtr := int64(binary.LittleEndian.Uint64(nodeData[childOffset : childOffset+8]))
+
+			// 递归遍历子树
+			if !r.forEachInternal(childPtr, callback, reverse) {
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
+// traverseLeafNodes 遍历所有叶子节点（从左到右）
 func (r *BTreeReader) traverseLeafNodes(nodeOffset int64, callback func(*BTreeNode)) {
 	if nodeOffset+BTreeNodeSize > int64(len(r.mmap)) {
 		return
@@ -579,9 +796,37 @@ func (r *BTreeReader) traverseLeafNodes(nodeOffset int64, callback func(*BTreeNo
 		// 叶子节点，执行回调
 		callback(node)
 	} else {
-		// 内部节点，递归遍历所有子节点
+		// 内部节点，递归遍历所有子节点（从左到右）
 		for _, childOffset := range node.Children {
 			r.traverseLeafNodes(childOffset, callback)
+		}
+	}
+}
+
+// traverseLeafNodesReverse 倒序遍历所有叶子节点（从右到左）
+//
+// 用于支持倒序查询，性能优化：
+//   - 避免先获取所有 keys 再反转
+//   - 直接从最右侧的叶子节点开始遍历
+func (r *BTreeReader) traverseLeafNodesReverse(nodeOffset int64, callback func(*BTreeNode)) {
+	if nodeOffset+BTreeNodeSize > int64(len(r.mmap)) {
+		return
+	}
+
+	nodeData := r.mmap[nodeOffset : nodeOffset+BTreeNodeSize]
+	node := UnmarshalBTree(nodeData)
+
+	if node == nil {
+		return
+	}
+
+	if node.NodeType == BTreeNodeTypeLeaf {
+		// 叶子节点，执行回调
+		callback(node)
+	} else {
+		// 内部节点，递归遍历所有子节点（从右到左）
+		for i := len(node.Children) - 1; i >= 0; i-- {
+			r.traverseLeafNodesReverse(node.Children[i], callback)
 		}
 	}
 }

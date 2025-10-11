@@ -1140,6 +1140,18 @@ func (r *SSTableReader) GetAllKeys() []int64 {
 	return r.btReader.GetAllKeys()
 }
 
+// ForEach 升序迭代所有 key-offset-size 对
+// callback 返回 false 时停止迭代，支持提前终止
+func (r *SSTableReader) ForEach(callback KeyCallback) {
+	r.btReader.ForEach(callback)
+}
+
+// ForEachDesc 降序迭代所有 key-offset-size 对
+// callback 返回 false 时停止迭代，支持提前终止
+func (r *SSTableReader) ForEachDesc(callback KeyCallback) {
+	r.btReader.ForEachDesc(callback)
+}
+
 // Close 关闭读取器
 func (r *SSTableReader) Close() error {
 	if r.mmap != nil {
