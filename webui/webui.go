@@ -17,13 +17,13 @@ import (
 //go:embed static
 var staticFS embed.FS
 
-// WebUI Web 界面处理器
+// WebUI Web 界面处理器 v2 (Preact)
 type WebUI struct {
 	db      *srdb.Database
 	handler http.Handler
 }
 
-// NewWebUI 创建 WebUI 实例
+// NewWebUI 创建 WebUI v2 实例
 func NewWebUI(db *srdb.Database) *WebUI {
 	ui := &WebUI{db: db}
 	ui.handler = ui.setupHandler()
@@ -34,7 +34,7 @@ func NewWebUI(db *srdb.Database) *WebUI {
 func (ui *WebUI) setupHandler() http.Handler {
 	mux := http.NewServeMux()
 
-	// API endpoints - 纯 JSON API
+	// API endpoints - 纯 JSON API（与 v1 共享）
 	mux.HandleFunc("/api/tables", ui.handleListTables)
 	mux.HandleFunc("/api/tables/", ui.handleTableAPI)
 
@@ -74,6 +74,7 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 
 	type TableListItem struct {
 		Name      string      `json:"name"`
+		RowCount  int64       `json:"row_count,omitempty"`
 		CreatedAt int64       `json:"created_at"`
 		Fields    []FieldInfo `json:"fields"`
 	}
@@ -92,8 +93,18 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
+		// 尝试获取行数（通过快速查询）
+		rowCount := int64(0)
+		if rows, err := table.Query().Rows(); err == nil {
+			for rows.Next() {
+				rowCount++
+			}
+			rows.Close()
+		}
+
 		tables = append(tables, TableListItem{
 			Name:      name,
+			RowCount:  rowCount,
 			CreatedAt: 0, // TODO: Table 不再有 createdAt 字段
 			Fields:    fields,
 		})
@@ -105,7 +116,9 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tables)
+	json.NewEncoder(w).Encode(map[string]any{
+		"tables": tables,
+	})
 }
 
 // handleTableAPI 处理表相关的 API 请求
@@ -217,9 +230,9 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 	// 获取 Compaction Manager
 	compactionMgr := table.GetCompactionManager()
 
-	levels := make([]LevelInfo, 0, 7)
-	for level := range 7 {
-		// 只调用一次 GetLevel，避免重复复制文件列表
+	// 只显示 L0-L3 层
+	levels := make([]LevelInfo, 0, 4)
+	for level := range 4 {
 		files := version.GetLevel(level)
 
 		totalSize := int64(0)
@@ -236,11 +249,8 @@ func (ui *WebUI) handleTableManifest(w http.ResponseWriter, r *http.Request, tab
 			})
 		}
 
-		// 使用已计算的 totalSize 和 fileCount 计算 score，避免再次调用 GetLevel
 		score := 0.0
-		if len(files) > 0 && level < 3 { // L3 是最后一层，不需要 compaction
-			// 直接计算 score，避免调用 picker.GetLevelScore（它会再次获取 files）
-			// 使用下一级的大小限制来计算得分（从 Options 配置读取）
+		if len(files) > 0 && level < 3 {
 			nextLevelLimit := compactionMgr.GetLevelSizeLimit(level + 1)
 			if nextLevelLimit > 0 {
 				score = float64(totalSize) / float64(nextLevelLimit)
@@ -320,23 +330,23 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 		return
 	}
 
-	// 解析分页参数
-	pageStr := r.URL.Query().Get("page")
-	pageSizeStr := r.URL.Query().Get("pageSize")
+	// 解析查询参数
+	limitStr := r.URL.Query().Get("limit")
+	offsetStr := r.URL.Query().Get("offset")
 	selectParam := r.URL.Query().Get("select") // 要选择的字段，逗号分隔
 
-	page := 1
-	pageSize := 20
+	limit := 100
+	offset := 0
 
-	if pageStr != "" {
-		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
-			page = p
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 1000 {
+			limit = l
 		}
 	}
 
-	if pageSizeStr != "" {
-		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 1000 {
-			pageSize = ps
+	if offsetStr != "" {
+		if o, err := strconv.Atoi(offsetStr); err == nil && o >= 0 {
+			offset = o
 		}
 	}
 
@@ -344,19 +354,17 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 	var selectedFields []string
 	if selectParam != "" {
 		selectedFields = strings.Split(selectParam, ",")
-		// 清理字段名（去除空格）
 		for i := range selectedFields {
 			selectedFields[i] = strings.TrimSpace(selectedFields[i])
 		}
 	}
 
-	// 获取 schema 用于字段类型判断
+	// 获取 schema
 	tableSchema := table.GetSchema()
 
-	// 使用 Query API 获取数据，如果指定了字段则只查询指定字段（按字段压缩优化）
+	// 使用 Query API 获取数据
 	queryBuilder := table.Query()
 	if len(selectedFields) > 0 {
-		// 确保 _seq 和 _time 总是被查询（用于构造响应）
 		fieldsWithMeta := make([]string, 0, len(selectedFields)+2)
 		hasSeq := false
 		hasTime := false
@@ -378,6 +386,7 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 
 		queryBuilder = queryBuilder.Select(fieldsWithMeta...)
 	}
+
 	queryRows, err := queryBuilder.Rows()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to query table: %v", err), http.StatusInternalServerError)
@@ -385,26 +394,23 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 	}
 	defer queryRows.Close()
 
-	// 计算分页范围
-	offset := (page - 1) * pageSize
+	// 收集数据
+	const maxStringLength = 100
+	data := make([]map[string]any, 0, limit)
 	currentIndex := 0
-
-	// 直接在遍历时进行分页和字段处理
-	const maxStringLength = 100 // 最大字符串长度
-	data := make([]map[string]any, 0, pageSize)
 	totalRows := int64(0)
 
 	for queryRows.Next() {
 		totalRows++
 
-		// 跳过不在当前页的数据
+		// 跳过 offset 之前的数据
 		if currentIndex < offset {
 			currentIndex++
 			continue
 		}
 
-		// 已经收集够当前页的数据
-		if len(data) >= pageSize {
+		// 已经收集够数据
+		if len(data) >= limit {
 			continue
 		}
 
@@ -440,11 +446,10 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 	}
 
 	response := map[string]any{
-		"data":       data,
-		"page":       page,
-		"pageSize":   pageSize,
-		"totalRows":  totalRows,
-		"totalPages": (totalRows + int64(pageSize) - 1) / int64(pageSize),
+		"data":      data,
+		"limit":     limit,
+		"offset":    offset,
+		"totalRows": totalRows,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
