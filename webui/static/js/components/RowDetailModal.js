@@ -1,5 +1,6 @@
 import { html } from 'htm/preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
+import { getRowBySeq } from '~/utils/api.js';
 
 const styles = {
     overlay: {
@@ -116,11 +117,8 @@ export function RowDetailModal({ tableName, seq, onClose }) {
     const fetchRowData = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`/api/tables/${tableName}/data/${seq}`);
-            if (response.ok) {
-                const data = await response.json();
-                setRowData(data);
-            }
+            const data = await getRowBySeq(tableName, seq);
+            setRowData(data);
         } catch (error) {
             console.error('Failed to fetch row data:', error);
         } finally {

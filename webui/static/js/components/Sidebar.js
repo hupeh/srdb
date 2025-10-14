@@ -1,5 +1,5 @@
 import { html } from 'htm/preact';
-import { TableItem } from './TableItem.js';
+import { TableItem } from '~/components/TableItem.js';
 
 export function Sidebar({ tables, selectedTable, onSelectTable, loading }) {
     if (loading) {

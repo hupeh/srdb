@@ -1,10 +1,11 @@
 import { html } from 'htm/preact';
 import { useState, useEffect } from 'preact/hooks';
-import { RowDetailModal } from './RowDetailModal.js';
-import { Pagination } from './Pagination.js';
-import { TableRow } from './TableRow.js';
-import { useCellPopover } from '../hooks/useCellPopover.js';
-import { useTooltip } from '../hooks/useTooltip.js';
+import { RowDetailModal } from '~/components/RowDetailModal.js';
+import { Pagination } from '~/components/Pagination.js';
+import { TableRow } from '~/components/TableRow.js';
+import { useCellPopover } from '~/hooks/useCellPopover.js';
+import { useTooltip } from '~/hooks/useTooltip.js';
+import { getTableData } from '~/utils/api.js';
 
 const styles = {
     container: {
@@ -83,11 +84,8 @@ export function DataTable({ schema, tableName, totalRows, selectedColumns = [] }
         try {
             setLoading(true);
             const offset = page * pageSize;
-            const response = await fetch(`/api/tables/${tableName}/data?limit=${pageSize}&offset=${offset}`);
-            if (response.ok) {
-                const result = await response.json();
-                setData(result.data || []);
-            }
+            const result = await getTableData(tableName, { limit: pageSize, offset });
+            setData(result.data || []);
         } catch (error) {
             console.error('Failed to fetch data:', error);
         } finally {

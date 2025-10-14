@@ -20,12 +20,18 @@ var staticFS embed.FS
 // WebUI Web 界面处理器 v2 (Preact)
 type WebUI struct {
 	db      *srdb.Database
+	basePath string
 	handler http.Handler
 }
 
 // NewWebUI 创建 WebUI v2 实例
-func NewWebUI(db *srdb.Database) *WebUI {
-	ui := &WebUI{db: db}
+// basePath 是可选的 URL 前缀路径（例如 "/debug"），如果为空则使用根路径 "/"
+func NewWebUI(db *srdb.Database, basePath ...string) *WebUI {
+	bp := ""
+	if len(basePath) > 0 && basePath[0] != "" {
+		bp = strings.TrimSuffix(basePath[0], "/") // 移除尾部斜杠
+	}
+	ui := &WebUI{db: db, basePath: bp}
 	ui.handler = ui.setupHandler()
 	return ui
 }
@@ -35,17 +41,30 @@ func (ui *WebUI) setupHandler() http.Handler {
 	mux := http.NewServeMux()
 
 	// API endpoints - 纯 JSON API（与 v1 共享）
-	mux.HandleFunc("/api/tables", ui.handleListTables)
-	mux.HandleFunc("/api/tables/", ui.handleTableAPI)
+	mux.HandleFunc(ui.path("/api/tables"), ui.handleListTables)
+	mux.HandleFunc(ui.path("/api/tables/"), ui.handleTableAPI)
 
 	// 静态文件服务
 	staticFiles, _ := fs.Sub(staticFS, "static")
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFiles))))
+	staticPath := ui.path("/static/")
+	mux.Handle(staticPath, http.StripPrefix(staticPath, http.FileServer(http.FS(staticFiles))))
 
 	// 首页
-	mux.HandleFunc("/", ui.handleIndex)
+	mux.HandleFunc(ui.path("/"), ui.handleIndex)
 
 	return mux
+}
+
+// path 返回带 basePath 前缀的路径
+func (ui *WebUI) path(p string) string {
+	if ui.basePath == "" {
+		return p
+	}
+	// 确保路径以 / 开头
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return ui.basePath + p
 }
 
 // Handler 返回 HTTP Handler
@@ -124,7 +143,12 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 // handleTableAPI 处理表相关的 API 请求
 func (ui *WebUI) handleTableAPI(w http.ResponseWriter, r *http.Request) {
 	// 解析路径: /api/tables/{name}/schema 或 /api/tables/{name}/data
-	path := strings.TrimPrefix(r.URL.Path, "/api/tables/")
+	// 需要先移除 basePath，再移除 /api/tables/ 前缀
+	path := r.URL.Path
+	if ui.basePath != "" {
+		path = strings.TrimPrefix(path, ui.basePath)
+	}
+	path = strings.TrimPrefix(path, "/api/tables/")
 	parts := strings.Split(path, "/")
 
 	if len(parts) < 2 {
@@ -458,7 +482,9 @@ func (ui *WebUI) handleTableData(w http.ResponseWriter, r *http.Request, tableNa
 
 // handleIndex 处理首页请求
 func (ui *WebUI) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
+	// 检查路径是否匹配（支持 basePath）
+	expectedPath := ui.path("/")
+	if r.URL.Path != expectedPath {
 		http.NotFound(w, r)
 		return
 	}
@@ -471,6 +497,25 @@ func (ui *WebUI) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 替换路径占位符 ~~ 为 basePath
+	// 如果 basePath 为空，则 ~~ → ""
+	// 如果 basePath 为 "/debug"，则 ~~ → "/debug"
+	// 示例：
+	//   - 无 basePath: href="~~/static/css/styles.css" → href="/static/css/styles.css"
+	//   - 有 basePath: href="~~/static/css/styles.css" → href="/debug/static/css/styles.css"
+	htmlContent := string(content)
+	if ui.basePath == "" {
+		// 无 basePath 时，直接替换为空
+		htmlContent = strings.ReplaceAll(htmlContent, `"~~"`, `""`)
+		htmlContent = strings.ReplaceAll(htmlContent, `"~~/`, `"/`)
+		htmlContent = strings.ReplaceAll(htmlContent, `'~~/`, `'/`)
+	} else {
+		// 有 basePath 时，替换为实际的 basePath
+		htmlContent = strings.ReplaceAll(htmlContent, `"~~"`, fmt.Sprintf(`"%s"`, ui.basePath))
+		htmlContent = strings.ReplaceAll(htmlContent, `"~~/`, fmt.Sprintf(`"%s/`, ui.basePath))
+		htmlContent = strings.ReplaceAll(htmlContent, `'~~/`, fmt.Sprintf(`'%s/`, ui.basePath))
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(content)
+	w.Write([]byte(htmlContent))
 }

@@ -7,7 +7,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="~~/static/css/styles.css">
+
+    <!-- 路径配置：服务端渲染时替换 ~~ 和 ~/: 为实际的 BasePath -->
+    <script>window.API_BASE = "~~";</script>
 
     <!-- Import Map for Preact and HTM -->
     <script type="importmap">
@@ -16,7 +19,8 @@
             "preact": "https://esm.sh/preact@10.19.3",
             "preact/": "https://esm.sh/preact@10.19.3/",
             "htm/preact": "https://esm.sh/htm@3.1.1/preact?external=preact",
-            "dom-align": "https://cdn.jsdelivr.net/npm/dom-align@1.12.4/+esm"
+            "dom-align": "https://cdn.jsdelivr.net/npm/dom-align@1.12.4/+esm",
+            "~/": "~~/static/js/"
         }
     }
     </script>
@@ -25,6 +29,6 @@
     <div id="app"></div>
 
     <!-- Load Preact App -->
-    <script type="module" src="/static/js/main.js"></script>
+    <script type="module" src="~~/static/js/main.js"></script>
 </body>
 </html>

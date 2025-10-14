@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useState } from 'preact/hooks';
-import { FieldList } from './FieldList.js';
+import { FieldList } from '~/components/FieldList.js';
 
 const styles = {
     tableItem: (isSelected, isExpanded) => ({

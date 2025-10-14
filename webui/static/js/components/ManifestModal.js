@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useEffect } from 'preact/hooks';
-import { ManifestView } from './ManifestView.js';
+import { ManifestView } from '~/components/ManifestView.js';
 
 const styles = {
     overlay: {

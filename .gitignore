@@ -38,6 +38,7 @@ testdb/
 # Example binaries and data
 /examples/*/data/
 /examples/*/*
+!/examples/*/commands
 !/examples/*/*.go
 !/examples/*/go.mod
 !/examples/*/go.sum

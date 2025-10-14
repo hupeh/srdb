@@ -1,9 +1,10 @@
 import { html } from 'htm/preact';
 import { useState, useEffect } from 'preact/hooks';
-import { DataTable } from './DataTable.js';
-import { ColumnSelector } from './ColumnSelector.js';
-import { ManifestModal } from './ManifestModal.js';
-import { useTooltip } from '../hooks/useTooltip.js';
+import { DataTable } from '~/components/DataTable.js';
+import { ColumnSelector } from '~/components/ColumnSelector.js';
+import { ManifestModal } from '~/components/ManifestModal.js';
+import { useTooltip } from '~/hooks/useTooltip.js';
+import { getTableSchema, getTableData } from '~/utils/api.js';
 
 const styles = {
     container: {
@@ -70,18 +71,12 @@ export function TableView({ tableName }) {
             setLoading(true);
 
             // 获取 Schema
-            const schemaResponse = await fetch(`/api/tables/${tableName}/schema`);
-            if (schemaResponse.ok) {
-                const schemaData = await schemaResponse.json();
-                setSchema(schemaData);
-            }
+            const schemaData = await getTableSchema(tableName);
+            setSchema(schemaData);
 
             // 获取数据行数（通过一次小查询）
-            const dataResponse = await fetch(`/api/tables/${tableName}/data?limit=1`);
-            if (dataResponse.ok) {
-                const data = await dataResponse.json();
-                setTotalRows(data.totalRows || 0);
-            }
+            const data = await getTableData(tableName, { limit: 1, offset: 0 });
+            setTotalRows(data.totalRows || 0);
         } catch (error) {
             console.error('Failed to fetch table info:', error);
         } finally {

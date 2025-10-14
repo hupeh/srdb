@@ -1,7 +1,8 @@
 import { html } from 'htm/preact';
 import { useState, useEffect } from 'preact/hooks';
-import { Sidebar } from './Sidebar.js';
-import { TableView } from './TableView.js';
+import { Sidebar } from '~/components/Sidebar.js';
+import { TableView } from '~/components/TableView.js';
+import { getTables } from '~/utils/api.js';
 
 export function App() {
     const [theme, setTheme] = useState('dark');
@@ -26,13 +27,10 @@ export function App() {
     const fetchTables = async () => {
         try {
             setLoading(true);
-            const response = await fetch('/api/tables');
-            if (response.ok) {
-                const data = await response.json();
-                setTables(data.tables || []);
-                if (data.tables && data.tables.length > 0) {
-                    setSelectedTable(data.tables[0].name);
-                }
+            const data = await getTables();
+            setTables(data.tables || []);
+            if (data.tables && data.tables.length > 0) {
+                setSelectedTable(data.tables[0].name);
             }
         } catch (error) {
             console.error('Failed to fetch tables:', error);

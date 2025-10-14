@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 import { useState } from 'preact/hooks';
-import { TableCell } from './TableCell.js';
+import { TableCell } from '~/components/TableCell.js';
 
 const styles = {
     td: {

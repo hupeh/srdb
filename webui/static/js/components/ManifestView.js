@@ -1,8 +1,9 @@
 import { html } from 'htm/preact';
 import { useState, useEffect } from 'preact/hooks';
-import { LevelCard } from './LevelCard.js';
-import { StatCard } from './StatCard.js';
-import { CompactionStats } from './CompactionStats.js';
+import { LevelCard } from '~/components/LevelCard.js';
+import { StatCard } from '~/components/StatCard.js';
+import { CompactionStats } from '~/components/CompactionStats.js';
+import { getTableManifest } from '~/utils/api.js';
 
 const styles = {
     container: {
@@ -42,11 +43,8 @@ export function ManifestView({ tableName }) {
 
     const fetchManifest = async () => {
         try {
-            const response = await fetch(`/api/tables/${tableName}/manifest`);
-            if (response.ok) {
-                const data = await response.json();
-                setManifest(data);
-            }
+            const data = await getTableManifest(tableName);
+            setManifest(data);
         } catch (error) {
             console.error('Failed to fetch manifest:', error);
         } finally {

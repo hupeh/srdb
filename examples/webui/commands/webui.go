@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"code.tczkiot.com/wlw/srdb"
@@ -110,14 +111,20 @@ func StartWebUI(dbPath string, addr string) {
 	// 启动后台数据插入协程
 	go autoInsertData(db)
 
-	// 启动 Web UI
-	handler := webui.NewWebUI(db)
+	// 创建 WebUI，使用 /debug 作为 basePath
+	ui := webui.NewWebUI(db, "/debug")
 
-	fmt.Printf("SRDB Web UI is running at http://%s\n", addr)
+	// 创建主路由
+	mux := http.NewServeMux()
+
+	// 挂载 WebUI 到根路径（WebUI 内部会处理 /debug 前缀）
+	mux.Handle("/", ui)
+
+	fmt.Printf("SRDB Web UI is running at: http://%s/debug/\n", strings.TrimPrefix(addr, ":"))
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println("Background data insertion is running...")
 
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatal(err)
 	}
 }

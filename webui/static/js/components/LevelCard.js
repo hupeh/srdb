@@ -1,5 +1,5 @@
 import { html } from 'htm/preact';
-import { FileCard } from './FileCard.js';
+import { FileCard } from '~/components/FileCard.js';
 
 const styles = {
     levelSection: {
