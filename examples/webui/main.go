@@ -67,6 +67,13 @@ func main() {
 		testKeysCmd.Parse(args)
 		commands.TestKeys(*dbPath)
 
+	case "generate-tables":
+		genTablesCmd := flag.NewFlagSet("generate-tables", flag.ExitOnError)
+		dbPath := genTablesCmd.String("db", "./data", "Database directory path")
+		count := genTablesCmd.Int("count", 100, "Number of tables to generate")
+		genTablesCmd.Parse(args)
+		commands.GenerateTables(*dbPath, *count)
+
 	case "help", "-h", "--help":
 		printUsage()
 
@@ -90,9 +97,11 @@ func printUsage() {
 	fmt.Println("  inspect-sst        Inspect a specific SST file")
 	fmt.Println("  test-fix           Test fix for data retrieval")
 	fmt.Println("  test-keys          Test key existence")
+	fmt.Println("  generate-tables    Generate test tables (default: 100)")
 	fmt.Println("  help               Show this help message")
 	fmt.Println("\nExamples:")
 	fmt.Println("  webui serve -db ./mydb -addr :3000")
 	fmt.Println("  webui check-data -db ./mydb")
 	fmt.Println("  webui inspect-sst -file ./data/logs/sst/000046.sst")
+	fmt.Println("  webui generate-tables -db ./mydb -count 100")
 }
