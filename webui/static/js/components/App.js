@@ -64,15 +64,19 @@ export function App() {
             overflowY: 'auto',
             overflowX: 'hidden',
             padding: '16px 12px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '8px'
         },
         sidebarHeader: {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: '4px'
+            marginBottom: '4px',
+            position: 'sticky',
+            top: '-16px',
+            marginTop: '-16px',
+            marginInline: '-12px',
+            padding: '16px 12px',
+            zIndex: 10,
+            background: 'var(--bg-surface)',
         },
         sidebarTitle: {
             fontSize: '18px',

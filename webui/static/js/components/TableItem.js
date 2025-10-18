@@ -9,24 +9,26 @@ const styles = {
         borderRadius: 'var(--radius-md)',
         overflow: 'hidden',
         transition: 'var(--transition)',
-        boxShadow: isSelected ? '0 0 0 1px var(--primary)' : 'none'
+        boxShadow: isSelected ? '0 0 0 1px var(--primary)' : 'none',
+        marginBottom: '8px'
     }),
     tableHeader: (isSelected) => ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingLeft: '4px',
-        paddingRight: '12px',
+        padding: '8px 12px 8px 4px',
         cursor: 'pointer',
         transition: 'var(--transition)',
-        background: isSelected ? 'var(--primary-bg)' : 'transparent'
+        background: isSelected ? 'var(--primary-bg)' : 'transparent',
+        minHeight: '40px'
     }),
     tableHeaderLeft: {
         display: 'flex',
         alignItems: 'center',
         gap: '8px',
         flex: 1,
-        minWidth: 0
+        minWidth: 0,
+        overflow: 'hidden'
     },
     expandIcon: (isExpanded) => ({
         display: 'flex',
@@ -45,10 +47,13 @@ const styles = {
     }),
     tableName: {
         fontWeight: 500,
+        fontSize: '14px',
         color: 'var(--text-primary)',
         whiteSpace: 'nowrap',
         overflow: 'hidden',
-        textOverflow: 'ellipsis'
+        textOverflow: 'ellipsis',
+        flex: 1,
+        minWidth: 0
     },
     tableCount: {
         fontSize: '12px',
