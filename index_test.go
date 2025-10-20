@@ -326,11 +326,7 @@ func TestIndexQueryIntegration(t *testing.T) {
 	}
 	defer table.Close()
 
-	// 3. 创建索引
-	err = table.CreateIndex("email")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// 3. 索引已在 OpenTable 时自动创建（因为字段标记为 Indexed: true）
 
 	// 4. 插入测试数据
 	testData := []map[string]any{
@@ -487,11 +483,7 @@ func TestIndexPersistenceAcrossRestart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// 创建索引
-		err = table.CreateIndex("category")
-		if err != nil {
-			t.Fatal(err)
-		}
+		// 索引已在 OpenTable 时自动创建（因为字段标记为 Indexed: true）
 
 		// 插入数据
 		testData := []map[string]any{

@@ -50,7 +50,7 @@ func TestCompactionBasic(t *testing.T) {
 		rows1[i] = &SSTableRow{
 			Seq:  int64(i),
 			Time: 1000,
-			Data: map[string]any{"value": i},
+			Data: map[string]any{"value": int64(i)},
 		}
 	}
 
@@ -95,7 +95,7 @@ func TestCompactionBasic(t *testing.T) {
 			rows[j] = &SSTableRow{
 				Seq:  int64(i*100 + j),
 				Time: int64(1000 + i),
-				Data: map[string]any{"value": i*100 + j},
+				Data: map[string]any{"value": int64(i*100 + j)},
 			}
 		}
 

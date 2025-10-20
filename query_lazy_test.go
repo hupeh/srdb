@@ -169,11 +169,7 @@ func TestIndexQueryIsEager(t *testing.T) {
 	}
 	defer table.Close()
 
-	// 创建索引
-	err = table.CreateIndex("email")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// 索引已在 OpenTable 时自动创建（因为字段标记为 Indexed: true）
 
 	// 插入数据
 	for i := 0; i < 10; i++ {
@@ -288,7 +284,7 @@ func TestLazyLoadingWithConditions(t *testing.T) {
 		data := row.Data()
 
 		// 验证条件
-		age := int64(data["age"].(float64))
+		age := data["age"].(int64)
 		active := data["active"].(bool)
 
 		if age < 30 {

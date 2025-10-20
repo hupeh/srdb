@@ -845,10 +845,10 @@ func (t *Table) Clean() error {
 	// 4. 删除所有索引文件
 	if t.indexManager != nil {
 		t.indexManager.Close()
-		indexFiles, _ := filepath.Glob(filepath.Join(t.dir, "idx_*.sst"))
-		for _, f := range indexFiles {
-			os.Remove(f)
-		}
+		// 删除 idx/ 子目录下的索引文件
+		idxDir := filepath.Join(t.dir, "idx")
+		os.RemoveAll(idxDir)
+		os.MkdirAll(idxDir, 0755)
 
 		// 重新创建 Index Manager
 		t.indexManager = NewIndexManager(t.dir, t.schema)
