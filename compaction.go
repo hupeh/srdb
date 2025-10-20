@@ -942,13 +942,13 @@ type CompactionManager struct {
 // NewCompactionManager 创建新的 Compaction Manager（使用默认配置）
 func NewCompactionManager(sstDir string, versionSet *VersionSet, sstManager *SSTableManager) *CompactionManager {
 	return &CompactionManager{
-		compactor:          NewCompactor(sstDir, versionSet),
-		versionSet:         versionSet,
-		sstManager:         sstManager,
-		sstDir:             sstDir,
-		stopCh:             make(chan struct{}),
+		compactor:  NewCompactor(sstDir, versionSet),
+		versionSet: versionSet,
+		sstManager: sstManager,
+		sstDir:     sstDir,
+		stopCh:     make(chan struct{}),
 		// 默认 logger：丢弃日志（将在 ApplyConfig 中设置为 Database.options.Logger）
-		logger:             slog.New(slog.NewTextHandler(io.Discard, nil)),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		// 使用硬编码常量作为默认值（向后兼容）
 		level0SizeLimit:    level0SizeLimit,
 		level1SizeLimit:    level1SizeLimit,
@@ -1015,9 +1015,11 @@ func (m *CompactionManager) Stop() {
 func (m *CompactionManager) backgroundCompaction() {
 	defer m.wg.Done()
 
-	// Options 是不可变的，配置在启动后不会改变，直接读取即可
+	// 读取配置（加锁保护）
+	m.configMu.Lock()
 	interval := m.compactionInterval
 	disabled := m.disableCompaction
+	m.configMu.Unlock()
 
 	if disabled {
 		return // 禁用自动 Compaction，直接退出
@@ -1436,9 +1438,11 @@ func (m *CompactionManager) GetLevelSizeLimit(level int) int64 {
 func (m *CompactionManager) backgroundGarbageCollection() {
 	defer m.wg.Done()
 
-	// Options 是不可变的，配置在启动后不会改变，直接读取即可
+	// 读取配置（加锁保护）
+	m.configMu.Lock()
 	interval := m.gcInterval
 	disabled := m.disableGC
+	m.configMu.Unlock()
 
 	if disabled {
 		return // 禁用垃圾回收，直接退出

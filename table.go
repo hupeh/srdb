@@ -38,6 +38,7 @@ type Table struct {
 	autoFlushTimeout time.Duration
 	lastWriteTime    atomic.Int64 // 最后写入时间（UnixNano）
 	stopAutoFlush    chan struct{}
+	stopAutoFlushMu  sync.RWMutex // 保护 stopAutoFlush 的访问
 }
 
 // TableOptions 配置选项
@@ -708,10 +709,17 @@ func (t *Table) autoFlushMonitor() {
 					t.Flush()
 				}
 			}
-		case <-t.stopAutoFlush:
+		case <-t.getStopAutoFlush():
 			return
 		}
 	}
+}
+
+// getStopAutoFlush 获取 stopAutoFlush channel（加锁保护）
+func (t *Table) getStopAutoFlush() <-chan struct{} {
+	t.stopAutoFlushMu.RLock()
+	defer t.stopAutoFlushMu.RUnlock()
+	return t.stopAutoFlush
 }
 
 // Flush 手动刷新 Active MemTable 到磁盘
@@ -792,9 +800,13 @@ func (t *Table) Clean() error {
 	defer t.flushMu.Unlock()
 
 	// 0. 停止自动 flush 监控（临时）
+	t.stopAutoFlushMu.Lock()
 	if t.stopAutoFlush != nil {
 		close(t.stopAutoFlush)
 	}
+	t.stopAutoFlushMu.Unlock()
+	// 等待 autoFlushMonitor goroutine 退出
+	time.Sleep(100 * time.Millisecond)
 
 	// 1. 停止 Compaction Manager
 	if t.compactionManager != nil {
@@ -882,7 +894,9 @@ func (t *Table) Clean() error {
 	t.lastWriteTime.Store(time.Now().UnixNano())
 
 	// 9. 重启自动 flush 监控
+	t.stopAutoFlushMu.Lock()
 	t.stopAutoFlush = make(chan struct{})
+	t.stopAutoFlushMu.Unlock()
 	go t.autoFlushMonitor()
 
 	return nil
