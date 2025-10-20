@@ -141,11 +141,21 @@ func NewSchema(name string, fields []Field) (*Schema, error) {
 		return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("schema must have at least one field"))
 	}
 
+	// 保留字段名列表
+	reservedFields := map[string]bool{
+		"_seq":  true,
+		"_time": true,
+	}
+
 	// 验证字段名不能为空且不能重复
 	fieldNames := make(map[string]bool)
 	for i, field := range fields {
 		if field.Name == "" {
 			return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("field at index %d has empty name", i))
+		}
+		// 检查是否使用了保留字段名
+		if reservedFields[field.Name] {
+			return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("field name '%s' is reserved and cannot be used", field.Name))
 		}
 		if fieldNames[field.Name] {
 			return nil, NewError(ErrCodeSchemaInvalid, fmt.Errorf("duplicate field name: %s", field.Name))

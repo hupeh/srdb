@@ -8,6 +8,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Fieldset interface {
@@ -967,23 +968,17 @@ func (r *Row) Seq() int64 {
 }
 
 // Scan 扫描行数据到指定的变量
+// 支持使用 srdb tag 进行字段映射
 func (r *Row) Scan(value any) error {
 	if r.inner == nil {
 		return fmt.Errorf("row is nil")
 	}
 
-	// 使用 r.Data() 而不是 r.inner.Data，这样会应用字段过滤
-	data, err := json.Marshal(r.Data())
-	if err != nil {
-		return fmt.Errorf("marshal row data: %w", err)
-	}
+	// 获取行数据（应用字段过滤）
+	data := r.Data()
 
-	err = json.Unmarshal(data, value)
-	if err != nil {
-		return fmt.Errorf("unmarshal to target: %w", err)
-	}
-
-	return nil
+	// 使用 scanToStruct 进行映射
+	return scanToStruct(data, value)
 }
 
 // Rows 游标模式的结果集（惰性加载）
@@ -1255,6 +1250,7 @@ func (r *Rows) Data() []map[string]any {
 // 智能判断目标类型：
 //   - 如果目标是切片：扫描所有行
 //   - 如果目标是结构体/指针：只扫描第一行
+// 支持使用 srdb tag 进行字段映射
 func (r *Rows) Scan(value any) error {
 	rv := reflect.ValueOf(value)
 	if rv.Kind() != reflect.Pointer {
@@ -1266,16 +1262,55 @@ func (r *Rows) Scan(value any) error {
 
 	// 如果目标是切片，扫描所有行
 	if kind == reflect.Slice {
-		data, err := json.Marshal(r.Collect())
-		if err != nil {
-			return fmt.Errorf("marshal rows data: %w", err)
+		// 获取切片元素类型
+		elemType := elem.Type().Elem()
+
+		// 确保数据已缓存
+		r.ensureCached()
+
+		// 创建新切片
+		newSlice := reflect.MakeSlice(elem.Type(), 0, len(r.cachedRows))
+
+		// 逐行扫描
+		for _, rowData := range r.cachedRows {
+			// 创建数据 map（应用字段过滤）
+			data := make(map[string]any)
+			if len(r.fields) == 0 {
+				// 没有字段过滤，包含所有字段
+				data["_seq"] = rowData.Seq
+				data["_time"] = rowData.Time
+				maps.Copy(data, rowData.Data)
+			} else {
+				// 应用字段过滤
+				for _, field := range r.fields {
+					if field == "_seq" {
+						data["_seq"] = rowData.Seq
+					} else if field == "_time" {
+						data["_time"] = rowData.Time
+					} else if val, ok := rowData.Data[field]; ok {
+						data[field] = val
+					}
+				}
+			}
+
+			// 创建新元素
+			elemPtr := reflect.New(elemType)
+
+			// 扫描到元素
+			if err := scanToStruct(data, elemPtr.Interface()); err != nil {
+				return fmt.Errorf("scan row failed: %w", err)
+			}
+
+			// 添加到切片（处理指针和值类型）
+			if elemType.Kind() == reflect.Pointer {
+				newSlice = reflect.Append(newSlice, elemPtr)
+			} else {
+				newSlice = reflect.Append(newSlice, elemPtr.Elem())
+			}
 		}
 
-		err = json.Unmarshal(data, value)
-		if err != nil {
-			return fmt.Errorf("unmarshal to target: %w", err)
-		}
-
+		// 设置结果
+		elem.Set(newSlice)
 		return nil
 	}
 
@@ -1313,4 +1348,273 @@ func (r *Rows) Last() (*Row, error) {
 // Count 返回总行数（别名）
 func (r *Rows) Count() int {
 	return r.Len()
+}
+
+// scanToStruct 将 map[string]any 数据扫描到结构体
+// 支持 srdb tag 进行字段映射
+func scanToStruct(data map[string]any, value any) error {
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Pointer {
+		return fmt.Errorf("scan target must be a pointer")
+	}
+
+	if rv.IsNil() {
+		return fmt.Errorf("scan target pointer is nil")
+	}
+
+	elem := rv.Elem()
+
+	// 如果目标是 map[string]any，直接复制
+	if elem.Kind() == reflect.Map && elem.Type() == reflect.TypeOf(map[string]any{}) {
+		if elem.IsNil() {
+			elem.Set(reflect.MakeMap(elem.Type()))
+		}
+		for k, v := range data {
+			elem.SetMapIndex(reflect.ValueOf(k), reflect.ValueOf(v))
+		}
+		return nil
+	}
+
+	// 否则必须是结构体
+	if elem.Kind() != reflect.Struct {
+		return fmt.Errorf("scan target must be a struct or map[string]any, got %s", elem.Kind())
+	}
+
+	typ := elem.Type()
+
+	// 遍历结构体字段，建立字段名映射
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+
+		// 跳过未导出的字段
+		if !field.IsExported() {
+			continue
+		}
+
+		// 解析 srdb tag，确定数据库字段名
+		dbFieldName := parseSRDBFieldName(field)
+		if dbFieldName == "-" {
+			// 忽略该字段
+			continue
+		}
+
+		// 从数据中获取值
+		dbValue, exists := data[dbFieldName]
+		if !exists {
+			// 字段不存在，跳过
+			continue
+		}
+
+		// 获取字段值
+		fieldValue := elem.Field(i)
+
+		// 设置字段值（处理类型转换和指针）
+		if err := setFieldValue(fieldValue, dbValue); err != nil {
+			return fmt.Errorf("set field %s: %w", field.Name, err)
+		}
+	}
+
+	return nil
+}
+
+// parseSRDBFieldName 解析 srdb tag 获取数据库字段名
+// 支持两种格式：
+//   1. 旧格式：`srdb:"field_name;indexed;comment:xxx"`  - 第一部分直接是字段名
+//   2. 新格式：`srdb:"field:field_name;indexed;comment:xxx"`  - 使用 field: 前缀
+// 如果没有 tag，使用 snake_case 转换
+func parseSRDBFieldName(field reflect.StructField) string {
+	tag := field.Tag.Get("srdb")
+
+	// 如果标记为忽略
+	if tag == "-" {
+		return "-"
+	}
+
+	// 默认使用 snake_case 字段名
+	fieldName := camelToSnake(field.Name)
+
+	if tag != "" {
+		// 使用分号分隔各部分
+		parts := strings.Split(tag, ";")
+
+		firstPart := ""
+		if len(parts) > 0 {
+			firstPart = strings.TrimSpace(parts[0])
+		}
+
+		// 首先检查新格式：field:xxx
+		if after, ok := strings.CutPrefix(firstPart, "field:"); ok {
+			return after
+		}
+
+		// 然后检查旧格式：第一个部分直接是字段名（不包含冒号，且不是关键字）
+		if firstPart != "" && !strings.Contains(firstPart, ":") {
+			// 检查是否为关键字
+			if firstPart != "indexed" && firstPart != "nullable" {
+				return firstPart
+			}
+		}
+	}
+
+	return fieldName
+}
+
+// setFieldValue 设置字段值，处理类型转换
+func setFieldValue(fieldValue reflect.Value, dbValue any) error {
+	if !fieldValue.CanSet() {
+		return fmt.Errorf("field cannot be set")
+	}
+
+	// 如果值为 nil
+	if dbValue == nil {
+		// 如果字段是指针类型，设置为 nil
+		if fieldValue.Kind() == reflect.Pointer {
+			fieldValue.Set(reflect.Zero(fieldValue.Type()))
+			return nil
+		}
+		// 非指针类型不能设置 nil，跳过
+		return nil
+	}
+
+	dbValueReflect := reflect.ValueOf(dbValue)
+
+	// 处理指针类型字段
+	if fieldValue.Kind() == reflect.Pointer {
+		// 创建新的指针
+		if fieldValue.IsNil() {
+			fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
+		}
+		// 递归设置指针指向的值
+		return setFieldValue(fieldValue.Elem(), dbValue)
+	}
+
+	// 类型完全匹配，直接设置
+	if dbValueReflect.Type().AssignableTo(fieldValue.Type()) {
+		fieldValue.Set(dbValueReflect)
+		return nil
+	}
+
+	// 需要类型转换
+	return convertAndSet(fieldValue, dbValue)
+}
+
+// convertAndSet 转换类型并设置字段值
+func convertAndSet(fieldValue reflect.Value, dbValue any) error {
+	fieldType := fieldValue.Type()
+	dbValueReflect := reflect.ValueOf(dbValue)
+
+	// 尝试类型转换
+	if dbValueReflect.Type().ConvertibleTo(fieldType) {
+		fieldValue.Set(dbValueReflect.Convert(fieldType))
+		return nil
+	}
+
+	// 特殊处理：time.Time (从 int64 Unix 纳秒时间戳)
+	if fieldType.String() == "time.Time" {
+		if dbInt, ok := dbValue.(int64); ok {
+			// 将 Unix 纳秒时间戳转换为 time.Time
+			t := reflect.ValueOf(unixNanoToTime(dbInt))
+			fieldValue.Set(t)
+			return nil
+		}
+	}
+
+	// 特殊处理：time.Duration (从 int64 纳秒)
+	if fieldType.String() == "time.Duration" {
+		if dbInt, ok := dbValue.(int64); ok {
+			d := reflect.ValueOf(unixNanoToDuration(dbInt))
+			fieldValue.Set(d)
+			return nil
+		}
+	}
+
+	// 特殊处理：复杂类型（Object 和 Array）
+	// 这些类型在数据库中可能存储为 []interface{} 或 map[string]interface{}
+	// 需要通过 JSON 进行转换
+	dbValueKind := dbValueReflect.Kind()
+	fieldKind := fieldType.Kind()
+
+	// Array 类型：[]interface{} -> 目标切片类型
+	if dbValueKind == reflect.Slice && fieldKind == reflect.Slice {
+		// 使用 JSON 序列化/反序列化进行类型转换
+		jsonData, err := json.Marshal(dbValue)
+		if err != nil {
+			return fmt.Errorf("marshal array failed: %w", err)
+		}
+
+		// 创建新的目标类型值
+		newValue := reflect.New(fieldType)
+		if err := json.Unmarshal(jsonData, newValue.Interface()); err != nil {
+			return fmt.Errorf("unmarshal array failed: %w", err)
+		}
+
+		fieldValue.Set(newValue.Elem())
+		return nil
+	}
+
+	// Object 类型：map[string]interface{} -> 目标类型（struct 或 map）
+	if dbValueKind == reflect.Map && (fieldKind == reflect.Struct || fieldKind == reflect.Map) {
+		// 使用 JSON 序列化/反序列化进行类型转换
+		jsonData, err := json.Marshal(dbValue)
+		if err != nil {
+			return fmt.Errorf("marshal object failed: %w", err)
+		}
+
+		// 创建新的目标类型值
+		newValue := reflect.New(fieldType)
+		if err := json.Unmarshal(jsonData, newValue.Interface()); err != nil {
+			return fmt.Errorf("unmarshal object failed: %w", err)
+		}
+
+		fieldValue.Set(newValue.Elem())
+		return nil
+	}
+
+	// 特殊处理：数值类型之间的转换
+	dbNum, dbIsNum := toFloat64(dbValue)
+	if dbIsNum {
+		switch fieldType.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			fieldValue.SetInt(int64(dbNum))
+			return nil
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			if dbNum < 0 {
+				return fmt.Errorf("cannot convert negative value %v to unsigned type", dbNum)
+			}
+			fieldValue.SetUint(uint64(dbNum))
+			return nil
+		case reflect.Float32, reflect.Float64:
+			fieldValue.SetFloat(dbNum)
+			return nil
+		}
+	}
+
+	// 特殊处理：字符串类型
+	if dbStr, ok := dbValue.(string); ok {
+		if fieldType.Kind() == reflect.String {
+			fieldValue.SetString(dbStr)
+			return nil
+		}
+	}
+
+	// 特殊处理：布尔类型
+	if dbBool, ok := dbValue.(bool); ok {
+		if fieldType.Kind() == reflect.Bool {
+			fieldValue.SetBool(dbBool)
+			return nil
+		}
+	}
+
+	// 无法转换
+	return fmt.Errorf("cannot convert %T to %s", dbValue, fieldType)
+}
+
+// unixNanoToTime 将 Unix 纳秒时间戳转换为 time.Time
+func unixNanoToTime(nano int64) time.Time {
+	return time.Unix(0, nano)
+}
+
+// unixNanoToDuration 将纳秒转换为 time.Duration
+func unixNanoToDuration(nano int64) time.Duration {
+	return time.Duration(nano)
 }
