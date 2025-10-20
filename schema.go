@@ -268,6 +268,7 @@ func StructToFields(v any) ([]Field, error) {
 			// 使用分号分隔各部分，与顺序无关
 			parts := strings.SplitSeq(tag, ";")
 
+			isFirst := true
 			for part := range parts {
 				part = strings.TrimSpace(part)
 				if part == "" {
@@ -287,7 +288,11 @@ func StructToFields(v any) ([]Field, error) {
 				} else if part == "nullable" {
 					// nullable 标记
 					nullable = true
+				} else if isFirst {
+					// 第一个非关键字部分作为字段名（支持 `srdb:"name"` 格式）
+					fieldName = part
 				}
+				isFirst = false
 			}
 		}
 
