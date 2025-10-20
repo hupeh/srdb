@@ -90,6 +90,8 @@ func TestWALTruncate(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// 在 Windows 上，必须先关闭 WAL 再读取文件
+	// 否则会出现 "Access is denied" 错误
 	wal.Close()
 
 	// 验证文件为空

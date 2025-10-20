@@ -97,16 +97,35 @@ func (w *WAL) Truncate() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	err := w.file.Truncate(0)
+	// 在 Windows 上，带 O_APPEND 标志的文件不能直接 truncate
+	// 需要先关闭，重新打开（不带 O_APPEND），truncate，再重新打开
+	path := w.file.Name()
+
+	// 关闭当前文件
+	w.file.Close()
+
+	// 以读写模式打开（不带 O_APPEND）
+	file, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return err
 	}
 
-	_, err = w.file.Seek(0, 0)
+	// Truncate
+	err = file.Truncate(0)
+	if err != nil {
+		file.Close()
+		return err
+	}
+
+	file.Close()
+
+	// 重新以 APPEND 模式打开
+	file, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
 
+	w.file = file
 	w.offset = 0
 	return nil
 }
