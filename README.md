@@ -31,7 +31,7 @@
 ### 安装
 
 ```bash
-go get code.tczkiot.com/wlw/srdb
+go get github.com/hupeh/srdb
 ```
 
 **要求**：Go 1.21+
@@ -44,7 +44,7 @@ package main
 import (
     "fmt"
     "log"
-    "code.tczkiot.com/wlw/srdb"
+    "github.com/hupeh/srdb"
 )
 
 func main() {
@@ -236,8 +236,8 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 📧 联系
 
-- 项目主页：https://code.tczkiot.com/wlw/srdb
-- Issue 跟踪：https://code.tczkiot.com/wlw/srdb/issues
+- 项目主页：https://github.com/hupeh/srdb
+- Issue 跟踪：https://github.com/hupeh/srdb/issues
 
 ---
 

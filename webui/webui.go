@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.tczkiot.com/wlw/srdb"
+	"github.com/hupeh/srdb"
 )
 
 //go:embed static
@@ -19,9 +19,9 @@ var staticFS embed.FS
 
 // WebUI Web 界面处理器 v2 (Preact)
 type WebUI struct {
-	db      *srdb.Database
+	db       *srdb.Database
 	basePath string
-	handler http.Handler
+	handler  http.Handler
 }
 
 // NewWebUI 创建 WebUI v2 实例

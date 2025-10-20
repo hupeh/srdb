@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"code.tczkiot.com/wlw/srdb"
+	"github.com/hupeh/srdb"
 )
 
 // TestFix 测试修复

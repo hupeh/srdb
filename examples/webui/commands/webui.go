@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"code.tczkiot.com/wlw/srdb"
-	"code.tczkiot.com/wlw/srdb/webui"
+	"github.com/hupeh/srdb"
+	"github.com/hupeh/srdb/webui"
 )
 
 // StartWebUI 启动 WebUI 服务器

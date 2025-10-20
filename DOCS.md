@@ -46,7 +46,7 @@ SRDB (Simple Row Database) 是一个用 Go 编写的高性能嵌入式数据库�
 ## 安装
 
 ```bash
-go get code.tczkiot.com/wlw/srdb
+go get github.com/hupeh/srdb
 ```
 
 **最低要求**：
@@ -65,7 +65,7 @@ package main
 import (
     "fmt"
     "log"
-    "code.tczkiot.com/wlw/srdb"
+    "github.com/hupeh/srdb"
 )
 
 func main() {
@@ -1359,8 +1359,8 @@ database_dir/
 
 ### 参考链接
 
-- [GitHub 仓库](https://code.tczkiot.com/wlw/srdb)
-- [API 文档](https://pkg.go.dev/code.tczkiot.com/wlw/srdb)
+- [GitHub 仓库](https://github.com/hupeh/srdb)
+- [API 文档](https://pkg.go.dev/github.com/hupeh/srdb)
 - [设计文档](DESIGN.md)
 - [开发者指南](CLAUDE.md)
 

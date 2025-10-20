@@ -330,7 +330,7 @@ Timeout      time.Duration
 
 ```go
 import (
-    "code.tczkiot.com/wlw/srdb"
+    "github.com/hupeh/srdb"
     "github.com/shopspring/decimal"
 )
 ```

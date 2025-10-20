@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SRDB 是一个用 Go 编写的高性能 Append-Only 时序数据库引擎。它使用简化的 LSM-tree 架构，结合 WAL + MemTable + mmap B+Tree SST 文件，针对高并发写入（200K+ 写/秒）和快速查询（1-5ms）进行了优化。
 
-**模块**: `code.tczkiot.com/wlw/srdb`
+**模块**: `github.com/hupeh/srdb`
 
 ## 构建和测试
 

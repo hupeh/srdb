@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"code.tczkiot.com/wlw/srdb"
+	"github.com/hupeh/srdb"
 	"github.com/shopspring/decimal"
 )
 
@@ -25,35 +25,35 @@ type Location struct {
 
 // NetworkConfig 网络配置（嵌套结构体）
 type NetworkConfig struct {
-	SSID       string `json:"ssid"`
-	Password   string `json:"password"`
-	IPAddress  string `json:"ip_address"`
-	Gateway    string `json:"gateway"`
-	DNS        string `json:"dns"`
-	UseStaticIP bool  `json:"use_static_ip"`
+	SSID        string `json:"ssid"`
+	Password    string `json:"password"`
+	IPAddress   string `json:"ip_address"`
+	Gateway     string `json:"gateway"`
+	DNS         string `json:"dns"`
+	UseStaticIP bool   `json:"use_static_ip"`
 }
 
 // Sensor 传感器信息（用于切片）
 type Sensor struct {
-	Type         string  `json:"type"`           // 传感器类型
-	Model        string  `json:"model"`          // 型号
-	Value        float64 `json:"value"`          // 当前值
-	Unit         string  `json:"unit"`           // 单位
-	MinValue     float64 `json:"min_value"`      // 最小值
-	MaxValue     float64 `json:"max_value"`      // 最大值
-	Precision    int     `json:"precision"`      // 精度
-	SamplingRate int     `json:"sampling_rate"`  // 采样率
-	Enabled      bool    `json:"enabled"`        // 是否启用
+	Type         string  `json:"type"`          // 传感器类型
+	Model        string  `json:"model"`         // 型号
+	Value        float64 `json:"value"`         // 当前值
+	Unit         string  `json:"unit"`          // 单位
+	MinValue     float64 `json:"min_value"`     // 最小值
+	MaxValue     float64 `json:"max_value"`     // 最大值
+	Precision    int     `json:"precision"`     // 精度
+	SamplingRate int     `json:"sampling_rate"` // 采样率
+	Enabled      bool    `json:"enabled"`       // 是否启用
 }
 
 // MaintenanceRecord 维护记录（用于切片）
 type MaintenanceRecord struct {
-	Date        string `json:"date"`         // 维护日期
-	Technician  string `json:"technician"`   // 技术员
-	Type        string `json:"type"`         // 维护类型
-	Description string `json:"description"`  // 描述
+	Date        string  `json:"date"`        // 维护日期
+	Technician  string  `json:"technician"`  // 技术员
+	Type        string  `json:"type"`        // 维护类型
+	Description string  `json:"description"` // 描述
 	Cost        float64 `json:"cost"`        // 费用
-	NextDate    string `json:"next_date"`    // 下次维护日期
+	NextDate    string  `json:"next_date"`   // 下次维护日期
 }
 
 // ========== 主结构体定义 ==========
@@ -66,39 +66,39 @@ type ComplexDevice struct {
 	Model    string `srdb:"model;comment:设备型号"`
 
 	// ========== Nullable 字段（指针类型）==========
-	SerialNumber *string           `srdb:"serial_number;nullable;comment:序列号（可选）"`
-	Manufacturer *string           `srdb:"manufacturer;nullable;comment:制造商（可选）"`
-	Description  *string           `srdb:"description;nullable;comment:描述（可选）"`
-	WarrantyEnd  *time.Time        `srdb:"warranty_end;nullable;comment:保修截止日期（可选）"`
-	LastMaintenance *time.Time     `srdb:"last_maintenance;nullable;comment:上次维护时间（可选）"`
-	MaxPower     *float32          `srdb:"max_power;nullable;comment:最大功率（可选）"`
-	Weight       *float64          `srdb:"weight;nullable;comment:重量（可选）"`
-	Voltage      *int32            `srdb:"voltage;nullable;comment:电压（可选）"`
-	Price        *decimal.Decimal  `srdb:"price;nullable;comment:价格（可选）"`
+	SerialNumber    *string          `srdb:"serial_number;nullable;comment:序列号（可选）"`
+	Manufacturer    *string          `srdb:"manufacturer;nullable;comment:制造商（可选）"`
+	Description     *string          `srdb:"description;nullable;comment:描述（可选）"`
+	WarrantyEnd     *time.Time       `srdb:"warranty_end;nullable;comment:保修截止日期（可选）"`
+	LastMaintenance *time.Time       `srdb:"last_maintenance;nullable;comment:上次维护时间（可选）"`
+	MaxPower        *float32         `srdb:"max_power;nullable;comment:最大功率（可选）"`
+	Weight          *float64         `srdb:"weight;nullable;comment:重量（可选）"`
+	Voltage         *int32           `srdb:"voltage;nullable;comment:电压（可选）"`
+	Price           *decimal.Decimal `srdb:"price;nullable;comment:价格（可选）"`
 
 	// ========== 所有基本类型 ==========
 	// 有符号整数
-	Signal       int   `srdb:"signal;comment:信号强度"`
-	ErrorCode    int8  `srdb:"error_code;comment:错误码"`
-	Temperature  int16 `srdb:"temperature;comment:温度（℃*10）"`
-	Counter      int32 `srdb:"counter;comment:计数器"`
-	TotalBytes   int64 `srdb:"total_bytes;comment:总字节数"`
+	Signal      int   `srdb:"signal;comment:信号强度"`
+	ErrorCode   int8  `srdb:"error_code;comment:错误码"`
+	Temperature int16 `srdb:"temperature;comment:温度（℃*10）"`
+	Counter     int32 `srdb:"counter;comment:计数器"`
+	TotalBytes  int64 `srdb:"total_bytes;comment:总字节数"`
 
 	// 无符号整数
-	Flags        uint   `srdb:"flags;comment:标志位"`
-	Status       uint8  `srdb:"status;comment:状态码"`
-	Port         uint16 `srdb:"port;comment:端口号"`
-	SessionID    uint32 `srdb:"session_id;comment:会话ID"`
-	Timestamp    uint64 `srdb:"timestamp;comment:时间戳"`
+	Flags     uint   `srdb:"flags;comment:标志位"`
+	Status    uint8  `srdb:"status;comment:状态码"`
+	Port      uint16 `srdb:"port;comment:端口号"`
+	SessionID uint32 `srdb:"session_id;comment:会话ID"`
+	Timestamp uint64 `srdb:"timestamp;comment:时间戳"`
 
 	// 浮点数
-	Humidity     float32 `srdb:"humidity;comment:湿度"`
-	Latitude     float64 `srdb:"latitude;comment:纬度"`
-	Longitude    float64 `srdb:"longitude;comment:经度"`
+	Humidity  float32 `srdb:"humidity;comment:湿度"`
+	Latitude  float64 `srdb:"latitude;comment:纬度"`
+	Longitude float64 `srdb:"longitude;comment:经度"`
 
 	// 布尔
-	IsOnline     bool `srdb:"is_online;indexed;comment:是否在线"`
-	IsActivated  bool `srdb:"is_activated;comment:是否激活"`
+	IsOnline    bool `srdb:"is_online;indexed;comment:是否在线"`
+	IsActivated bool `srdb:"is_activated;comment:是否激活"`
 
 	// 特殊类型
 	BatteryLevel byte            `srdb:"battery_level;comment:电池电量"`
@@ -112,17 +112,17 @@ type ComplexDevice struct {
 	NetworkConfig NetworkConfig `srdb:"network_config;comment:网络配置（嵌套结构体）"`
 
 	// ========== 结构体切片（Array）==========
-	Sensors           []Sensor            `srdb:"sensors;comment:传感器列表（结构体切片）"`
+	Sensors            []Sensor            `srdb:"sensors;comment:传感器列表（结构体切片）"`
 	MaintenanceRecords []MaintenanceRecord `srdb:"maintenance_records;comment:维护记录（结构体切片）"`
 
 	// ========== 基本类型切片 ==========
-	Tags              []string  `srdb:"tags;comment:标签列表"`
-	AlertCodes        []int32   `srdb:"alert_codes;comment:告警代码列表"`
-	HistoryReadings   []float64 `srdb:"history_readings;comment:历史读数"`
+	Tags            []string  `srdb:"tags;comment:标签列表"`
+	AlertCodes      []int32   `srdb:"alert_codes;comment:告警代码列表"`
+	HistoryReadings []float64 `srdb:"history_readings;comment:历史读数"`
 
 	// ========== 简单 Map（Object）==========
-	Metadata          map[string]any `srdb:"metadata;comment:元数据"`
-	CustomSettings    map[string]any `srdb:"custom_settings;comment:自定义设置"`
+	Metadata       map[string]any `srdb:"metadata;comment:元数据"`
+	CustomSettings map[string]any `srdb:"custom_settings;comment:自定义设置"`
 }
 
 func main() {
@@ -207,7 +207,7 @@ func main() {
 	serialNum := "SN-2025-001-ALPHA"
 	manufacturer := "智能科技有限公司"
 	description := "高性能工业级环境监测站，支持多种传感器接入"
-	warrantyEnd := time.Now().AddDate(3, 0, 0) // 3年保修
+	warrantyEnd := time.Now().AddDate(3, 0, 0)        // 3年保修
 	lastMaint := time.Now().Add(-30 * 24 * time.Hour) // 30天前维护
 	maxPower := float32(500.5)
 	weight := 12.5
@@ -233,26 +233,26 @@ func main() {
 		"price":            price,
 
 		// 基本类型
-		"signal":      -55,
-		"error_code":  int8(0),
-		"temperature": int16(235), // 23.5°C
-		"counter":     int32(12345),
-		"total_bytes": int64(1024 * 1024 * 500),
-		"flags":       uint(0x0F),
-		"status":      uint8(200),
-		"port":        uint16(8080),
-		"session_id":  uint32(987654321),
-		"timestamp":   uint64(time.Now().Unix()),
-		"humidity":    float32(65.5),
-		"latitude":    39.904200,
-		"longitude":   116.407396,
-		"is_online":   true,
-		"is_activated": true,
+		"signal":        -55,
+		"error_code":    int8(0),
+		"temperature":   int16(235), // 23.5°C
+		"counter":       int32(12345),
+		"total_bytes":   int64(1024 * 1024 * 500),
+		"flags":         uint(0x0F),
+		"status":        uint8(200),
+		"port":          uint16(8080),
+		"session_id":    uint32(987654321),
+		"timestamp":     uint64(time.Now().Unix()),
+		"humidity":      float32(65.5),
+		"latitude":      39.904200,
+		"longitude":     116.407396,
+		"is_online":     true,
+		"is_activated":  true,
 		"battery_level": byte(85),
-		"grade":       rune('S'),
-		"total_price": decimal.NewFromFloat(15999.99),
-		"created_at":  time.Now(),
-		"uptime":      72 * time.Hour,
+		"grade":         rune('S'),
+		"total_price":   decimal.NewFromFloat(15999.99),
+		"created_at":    time.Now(),
+		"uptime":        72 * time.Hour,
 
 		// 嵌套结构体
 		"location": Location{
@@ -334,16 +334,16 @@ func main() {
 
 		// Map
 		"metadata": map[string]any{
-			"install_date": "2024-01-15",
-			"firmware_version": "v2.3.1",
+			"install_date":      "2024-01-15",
+			"firmware_version":  "v2.3.1",
 			"hardware_revision": "Rev-C",
-			"certification": []string{"CE", "FCC", "RoHS"},
+			"certification":     []string{"CE", "FCC", "RoHS"},
 		},
 		"custom_settings": map[string]any{
-			"auto_calibrate": true,
+			"auto_calibrate":  true,
 			"report_interval": 60,
 			"alert_threshold": 85.0,
-			"debug_mode": false,
+			"debug_mode":      false,
 		},
 	}
 
@@ -384,26 +384,26 @@ func main() {
 		"price":            nil, // NULL
 
 		// 基本类型
-		"signal":      -70,
-		"error_code":  int8(0),
-		"temperature": int16(220),
-		"counter":     int32(500),
-		"total_bytes": int64(1024 * 1024 * 10),
-		"flags":       uint(0x03),
-		"status":      uint8(100),
-		"port":        uint16(8081),
-		"session_id":  uint32(123456789),
-		"timestamp":   uint64(time.Now().Unix()),
-		"humidity":    float32(55.0),
-		"latitude":    39.900000,
-		"longitude":   116.400000,
-		"is_online":   false,
-		"is_activated": true,
+		"signal":        -70,
+		"error_code":    int8(0),
+		"temperature":   int16(220),
+		"counter":       int32(500),
+		"total_bytes":   int64(1024 * 1024 * 10),
+		"flags":         uint(0x03),
+		"status":        uint8(100),
+		"port":          uint16(8081),
+		"session_id":    uint32(123456789),
+		"timestamp":     uint64(time.Now().Unix()),
+		"humidity":      float32(55.0),
+		"latitude":      39.900000,
+		"longitude":     116.400000,
+		"is_online":     false,
+		"is_activated":  true,
 		"battery_level": byte(30),
-		"grade":       rune('B'),
-		"total_price": decimal.NewFromFloat(299.99),
-		"created_at":  time.Now().Add(-7 * 24 * time.Hour),
-		"uptime":      168 * time.Hour,
+		"grade":         rune('B'),
+		"total_price":   decimal.NewFromFloat(299.99),
+		"created_at":    time.Now().Add(-7 * 24 * time.Hour),
+		"uptime":        168 * time.Hour,
 
 		// 嵌套结构体
 		"location": Location{
@@ -446,7 +446,7 @@ func main() {
 
 		// Map
 		"metadata": map[string]any{
-			"install_date": "2025-01-01",
+			"install_date":     "2025-01-01",
 			"firmware_version": "v1.0.0",
 		},
 		"custom_settings": map[string]any{
@@ -491,29 +491,29 @@ func main() {
 		"price":            nil,
 
 		// 基本类型（最小值/默认值）
-		"signal":      -90,
-		"error_code":  int8(-1),
-		"temperature": int16(0),
-		"counter":     int32(0),
-		"total_bytes": int64(0),
-		"flags":       uint(0),
-		"status":      uint8(0),
-		"port":        uint16(0),
-		"session_id":  uint32(0),
-		"timestamp":   uint64(0),
-		"humidity":    float32(0.0),
-		"latitude":    0.0,
-		"longitude":   0.0,
-		"is_online":   false,
-		"is_activated": false,
+		"signal":        -90,
+		"error_code":    int8(-1),
+		"temperature":   int16(0),
+		"counter":       int32(0),
+		"total_bytes":   int64(0),
+		"flags":         uint(0),
+		"status":        uint8(0),
+		"port":          uint16(0),
+		"session_id":    uint32(0),
+		"timestamp":     uint64(0),
+		"humidity":      float32(0.0),
+		"latitude":      0.0,
+		"longitude":     0.0,
+		"is_online":     false,
+		"is_activated":  false,
 		"battery_level": byte(0),
-		"grade":       rune('C'),
-		"total_price": decimal.Zero,
-		"created_at":  time.Unix(0, 0),
-		"uptime":      0 * time.Second,
+		"grade":         rune('C'),
+		"total_price":   decimal.Zero,
+		"created_at":    time.Unix(0, 0),
+		"uptime":        0 * time.Second,
 
 		// 嵌套结构体（空值）
-		"location": Location{},
+		"location":       Location{},
 		"network_config": NetworkConfig{},
 
 		// 结构体切片（空切片）

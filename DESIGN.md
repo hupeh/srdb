@@ -1,6 +1,6 @@
 # SRDB 设计文档：WAL + mmap B+Tree
 
-> 模块名：`code.tczkiot.com/wlw/srdb`
+> 模块名：`github.com/hupeh/srdb`
 > 一个高性能的 Append-Only 时序数据库引擎
 
 ## 🎯 设计目标

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"code.tczkiot.com/wlw/srdb/examples/webui/commands"
+	"github.com/hupeh/srdb/examples/webui/commands"
 )
 
 func main() {

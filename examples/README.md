@@ -407,8 +407,8 @@ package main
 
 import (
     "net/http"
-    "code.tczkiot.com/wlw/srdb"
-    "code.tczkiot.com/wlw/srdb/webui"
+    "github.com/hupeh/srdb"
+    "github.com/hupeh/srdb/webui"
 )
 
 func main() {
@@ -442,7 +442,7 @@ http.ListenAndServe(":8080", mux)
 将 webui 工具的命令集成到你的应用：
 
 ```go
-import "code.tczkiot.com/wlw/srdb/examples/webui/commands"
+import "github.com/hupeh/srdb/examples/webui/commands"
 
 // 检查数据
 commands.CheckData("./mydb")

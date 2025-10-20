@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"code.tczkiot.com/wlw/srdb"
+	"github.com/hupeh/srdb"
 )
 
 // CheckData 检查数据库中的数据

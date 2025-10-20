@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"code.tczkiot.com/wlw/srdb"
+	"github.com/hupeh/srdb"
 )
 
 // GenerateTables 生成指定数量的测试表

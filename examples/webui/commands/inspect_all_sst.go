@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"code.tczkiot.com/wlw/srdb"
+	"github.com/hupeh/srdb"
 )
 
 // InspectAllSST 检查所有 SST 文件
