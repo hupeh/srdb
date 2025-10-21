@@ -89,6 +89,13 @@ func (idx *SecondaryIndex) Build() error {
 	idx.metadata.Version++
 	idx.metadata.UpdatedAt = time.Now().UnixNano()
 
+	// 在 Windows 上，必须先关闭 mmap 才能 truncate 文件
+	// 否则会出现 "The requested operation cannot be performed on a file with a user-mapped section open" 错误
+	if idx.btreeReader != nil {
+		idx.btreeReader.Close()
+		idx.btreeReader = nil
+	}
+
 	// Truncate 文件
 	err := idx.file.Truncate(0)
 	if err != nil {
@@ -109,11 +116,6 @@ func (idx *SecondaryIndex) Build() error {
 	err = writer.Build()
 	if err != nil {
 		return fmt.Errorf("failed to build btree index: %w", err)
-	}
-
-	// 关闭旧的 btreeReader
-	if idx.btreeReader != nil {
-		idx.btreeReader.Close()
 	}
 
 	// 重新加载 btreeReader（读取刚写入的数据）

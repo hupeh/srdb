@@ -644,9 +644,11 @@ func TestPowerFailureRecovery(t *testing.T) {
 func TestCrashDuringCompaction(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Note: This test uses []byte data - we create a minimal schema
+	// Note: This test uses []byte data - we create a complete schema
+	// Using String type for binary data (stored as-is in binary encoding)
 	schema, err := NewSchema("test", []Field{
 		{Name: "index", Type: Int64, Indexed: false, Comment: "Index"},
+		{Name: "data", Type: String, Indexed: false, Comment: "Binary data as string"},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -674,8 +676,8 @@ func TestCrashDuringCompaction(t *testing.T) {
 		rand.Read(data)
 
 		payload := map[string]any{
-			"index": i,
-			"data":  data,
+			"index": int64(i),
+			"data":  string(data), // Convert to string for String type field
 		}
 
 		err := table.Insert(payload)
