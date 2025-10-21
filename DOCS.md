@@ -125,12 +125,12 @@ func main() {
 }
 
 type User struct {
-    ID       uint32            `json:"id"`
-    Name     string            `json:"name"`
-    Email    string            `json:"email"`
-    Age      int32             `json:"age"`
-    Settings map[string]string `json:"settings"`
-    Tags     []string          `json:"tags"`
+    ID       uint32            `srdb:"field:id"`
+    Name     string            `srdb:"field:name"`
+    Email    string            `srdb:"field:email"`
+    Age      int32             `srdb:"field:age"`
+    Settings map[string]string `srdb:"field:settings"`
+    Tags     []string          `srdb:"field:tags"`
 }
 ```
 
@@ -685,8 +685,8 @@ err := table.Query().
 ```go
 // 定义简化的结构体
 type UserBrief struct {
-    Name  string `json:"name"`
-    Email string `json:"email"`
+    Name  string `srdb:"field:name"`
+    Email string `srdb:"field:email"`
 }
 
 // 只扫描指定字段
@@ -702,12 +702,12 @@ err := table.Query().
 
 ```go
 type User struct {
-    Name     string            `json:"name"`
-    Email    string            `json:"email"`
-    Settings map[string]string `json:"settings"`  // Object
-    Tags     []string          `json:"tags"`      // Array
-    Metadata map[string]any    `json:"metadata"`  // Object with any
-    Scores   []int             `json:"scores"`    // Array of int
+    Name     string            `srdb:"field:name"`
+    Email    string            `srdb:"field:email"`
+    Settings map[string]string `srdb:"field:settings"`  // Object
+    Tags     []string          `srdb:"field:tags"`      // Array
+    Metadata map[string]any    `srdb:"field:metadata"`  // Object with any
+    Scores   []int             `srdb:"field:scores"`    // Array of int
 }
 
 var user User
@@ -868,17 +868,17 @@ Object 和 Array 可以任意嵌套：
 
 ```go
 type Config struct {
-    Server   string          `json:"server"`
-    Port     int             `json:"port"`
-    Features map[string]bool `json:"features"`  // 嵌套 Object
+    Server   string          `srdb:"field:server"`
+    Port     int             `srdb:"field:port"`
+    Features map[string]bool `srdb:"field:features"`  // 嵌套 Object
 }
 
 type Application struct {
-    Name    string            `json:"name"`
-    Config  Config            `json:"config"`     // 嵌套结构体
-    Servers []string          `json:"servers"`    // Array
-    Tags    []string          `json:"tags"`       // Array
-    Meta    map[string]any    `json:"meta"`       // Object
+    Name    string            `srdb:"field:name"`
+    Config  Config            `srdb:"field:config"`     // 嵌套结构体
+    Servers []string          `srdb:"field:servers"`    // Array
+    Tags    []string          `srdb:"field:tags"`       // Array
+    Meta    map[string]any    `srdb:"field:meta"`       // Object
 }
 
 // 插入嵌套数据
@@ -962,37 +962,61 @@ schema, _ := srdb.NewSchema("users", []srdb.Field{
 ### 索引的工作原理
 
 1. **自动创建**：创建表时，所有标记为 `Indexed: true` 的字段会自动创建索引
-2. **自动更新**：插入/更新数据时，索引会自动更新
-3. **查询优化**：使用 `Eq()` 查询索引字段时，会自动使用索引
+2. **自动更新**：插入数据时，索引会自动更新
+3. **查询优化**：
+   - 使用 `Eq()` 查询索引字段时，自动使用索引（O(1) 查找）
+   - 使用 `OrderBy()` 对索引字段排序时，自动使用索引（按字段值排序）
 
 ```go
-// 使用索引（快速）
+// 1. 等值查询：使用索引（O(1) 哈希查找）
 rows, _ := table.Query().Eq("email", "alice@example.com").Rows()
 
-// 不使用索引（全表扫描）
-rows, _ := table.Query().Contains("name", "Alice").Rows()
+// 2. 排序查询：使用索引（需要字段有索引）
+rows, _ := table.Query().OrderBy("email").Rows()          // 按 email 升序
+rows, _ := table.Query().OrderByDesc("created_at").Rows() // 按 created_at 降序
+
+// 3. 按 _seq 排序：无需索引（数据本身按 seq 存储）
+rows, _ := table.Query().OrderBy("_seq").Rows()
+
+// 4. 不使用索引：全表扫描
+rows, _ := table.Query().Contains("name", "Alice").Rows()  // 模糊查询
+rows, _ := table.Query().Gt("age", 18).Rows()              // 范围查询
 ```
+
+### 索引类型
+
+SRDB 使用**哈希索引** + **B+Tree 持久化**：
+- 支持**等值查询**（`Eq` 操作）：O(1) 哈希查找
+- 支持**排序查询**（`OrderBy/OrderByDesc`）：按字段值排序
+- 不支持范围查询（`Gt/Lt/Between`）、模糊查询（`Contains/StartsWith`）
 
 ### 索引适用场景
 
 **适合创建索引**：
-- ✅ 经常用于等值查询的字段（`Eq`）
-- ✅ 高基数字段（unique 或接近 unique）
+- ✅ 经常使用 `Eq()` 等值查询的字段
+- ✅ 需要使用 `OrderBy()` 排序的字段
 - ✅ 查询频繁的字段
+- ✅ 即使是低基数字段（如状态、性别），如果经常等值查询或排序也推荐索引
 
 **不适合创建索引**：
-- ❌ 低基数字段（如性别、状态等）
 - ❌ 很少查询的字段
-- ❌ 频繁更新的字段
-- ❌ Object 和 Array 类型字段
+- ❌ 只用于范围查询、模糊查询的字段（索引无法加速）
+- ❌ Object 和 Array 类型字段（不支持）
+
+**注意**：SRDB 是 Append-Only 架构，不存在"更新"操作，因此不需要考虑更新开销。
 
 ### 索引性能
 
-| 操作 | 无索引 | 有索引 | 提升 |
+| 操作 | 无索引 | 有索引 | 说明 |
 |------|--------|--------|------|
-| 等值查询 (Eq) | O(N) | O(log N) | ~1000x |
-| 范围查询 (Gt/Lt) | O(N) | O(N) | 无提升 |
-| 模糊查询 (Contains) | O(N) | O(N) | 无提升 |
+| 等值查询 (Eq) | O(N) 全表扫描 | O(1) 哈希查找 | ~1000x 提升 |
+| 排序查询 (OrderBy) | O(N log N) 内存排序 | O(M log M + K) | M=唯一值数，K=结果数 |
+| 范围查询 (Gt/Lt) | O(N) 全表扫描 | - | 不支持 |
+| 模糊查询 (Contains) | O(N) 全表扫描 | - | 不支持 |
+
+**排序查询说明**：
+- 索引字段排序需要遍历索引并按字段值排序，适合唯一值较少的字段
+- `_seq` 排序无需索引（数据本身按 seq 存储）
 
 ---
 
@@ -1225,11 +1249,12 @@ table.Insert(data)  // 错误未处理
 
 2. **合理使用索引**
    ```go
-   // ✓ 高基数、频繁查询的字段
-   Email string `srdb:"indexed"`
+   // ✓ 频繁使用 Eq() 查询的字段都应该创建索引
+   Email  string `srdb:"indexed"`  // 高基数字段
+   Status string `srdb:"indexed"`  // 低基数字段也可以，如果经常查询
 
-   // ✗ 低基数字段不需要索引
-   Gender string  // 只有 2-3 个值
+   // ✗ 很少查询或只用于范围/模糊查询的字段
+   Description string  // 只用于 Contains() 模糊查询
    ```
 
 3. **Nullable 字段使用指针**

@@ -1422,6 +1422,8 @@ func scanToStruct(data map[string]any, value any) error {
 //   1. 旧格式：`srdb:"field_name;indexed;comment:xxx"`  - 第一部分直接是字段名
 //   2. 新格式：`srdb:"field:field_name;indexed;comment:xxx"`  - 使用 field: 前缀
 // 如果没有 tag，使用 snake_case 转换
+//
+// 注意：此函数的逻辑与 schema.go 中 StructToFields 的 tag 解析保持一致
 func parseSRDBFieldName(field reflect.StructField) string {
 	tag := field.Tag.Get("srdb")
 
@@ -1434,25 +1436,28 @@ func parseSRDBFieldName(field reflect.StructField) string {
 	fieldName := camelToSnake(field.Name)
 
 	if tag != "" {
-		// 使用分号分隔各部分
+		// 使用分号分隔各部分，与顺序无关
 		parts := strings.Split(tag, ";")
 
-		firstPart := ""
-		if len(parts) > 0 {
-			firstPart = strings.TrimSpace(parts[0])
-		}
-
-		// 首先检查新格式：field:xxx
-		if after, ok := strings.CutPrefix(firstPart, "field:"); ok {
-			return after
-		}
-
-		// 然后检查旧格式：第一个部分直接是字段名（不包含冒号，且不是关键字）
-		if firstPart != "" && !strings.Contains(firstPart, ":") {
-			// 检查是否为关键字
-			if firstPart != "indexed" && firstPart != "nullable" {
-				return firstPart
+		isFirst := true
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
 			}
+
+			// 检查是否为 key:value 格式
+			if after, ok := strings.CutPrefix(part, "field:"); ok {
+				// field:字段名 (推荐格式)
+				fieldName = after
+			} else if part == "indexed" || part == "nullable" {
+				// 关键字，跳过
+				continue
+			} else if !strings.Contains(part, ":") && isFirst {
+				// 第一个非关键字部分作为字段名（兼容旧格式 `srdb:"name"`）
+				fieldName = part
+			}
+			isFirst = false
 		}
 	}
 

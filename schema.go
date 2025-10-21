@@ -211,9 +211,9 @@ func NewSchema(name string, fields []Field) (*Schema, error) {
 // 示例：
 //
 //	type User struct {
-//	    Name  string  `srdb:"name;indexed;comment:用户名"`
-//	    Age   int64   `srdb:"age;comment:年龄"`
-//	    Email *string `srdb:"email;nullable;comment:邮箱（可选）"`
+//	    Name  string  `srdb:"field:name;indexed;comment:用户名"`
+//	    Age   int64   `srdb:"field:age;comment:年龄"`
+//	    Email *string `srdb:"field:email;nullable;comment:邮箱（可选）"`
 //	}
 //	fields, err := StructToFields(User{})
 //
@@ -277,7 +277,7 @@ func StructToFields(v any) ([]Field, error) {
 
 				// 检查是否为 key:value 格式
 				if after, ok := strings.CutPrefix(part, "field:"); ok {
-					// field:字段名
+					// field:字段名 (推荐格式)
 					fieldName = after
 				} else if after, ok := strings.CutPrefix(part, "comment:"); ok {
 					// comment:注释内容
@@ -288,8 +288,8 @@ func StructToFields(v any) ([]Field, error) {
 				} else if part == "nullable" {
 					// nullable 标记
 					nullable = true
-				} else if isFirst {
-					// 第一个非关键字部分作为字段名（支持 `srdb:"name"` 格式）
+				} else if !strings.Contains(part, ":") && isFirst {
+					// 第一个非关键字部分作为字段名（兼容旧格式 `srdb:"name"`）
 					fieldName = part
 				}
 				isFirst = false

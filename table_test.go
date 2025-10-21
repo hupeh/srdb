@@ -2026,9 +2026,9 @@ func TestInsertStruct(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	type User struct {
-		Name  string `srdb:"name"`
-		Age   int64  `srdb:"age"`
-		Email string `srdb:"email"`
+		Name  string `srdb:"field:name"`
+		Age   int64  `srdb:"field:age"`
+		Email string `srdb:"field:email"`
 	}
 
 	schema, err := NewSchema("users", []Field{
@@ -2084,9 +2084,9 @@ func TestInsertStructPointer(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	type User struct {
-		Name  string `srdb:"name"`
-		Age   int64  `srdb:"age"`
-		Email string `srdb:"email"`
+		Name  string `srdb:"field:name"`
+		Age   int64  `srdb:"field:age"`
+		Email string `srdb:"field:email"`
 	}
 
 	schema, err := NewSchema("users", []Field{
@@ -2139,8 +2139,8 @@ func TestInsertStructSlice(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	type User struct {
-		Name string `srdb:"name"`
-		Age  int64  `srdb:"age"`
+		Name string `srdb:"field:name"`
+		Age  int64  `srdb:"field:age"`
 	}
 
 	schema, err := NewSchema("users", []Field{
@@ -2191,8 +2191,8 @@ func TestInsertStructPointerSlice(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	type User struct {
-		Name string `srdb:"name"`
-		Age  int64  `srdb:"age"`
+		Name string `srdb:"field:name"`
+		Age  int64  `srdb:"field:age"`
 	}
 
 	schema, err := NewSchema("users", []Field{

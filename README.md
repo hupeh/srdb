@@ -15,7 +15,7 @@
 - **链式查询 API** - 18 种操作符，支持复合条件
 - **自动 Compaction** - 后台异步合并，优化存储空间
 - **零拷贝读取** - mmap 访问 SST 文件，内存占用 <150MB
-- **Web 管理界面** - 现代化的数据浏览和监控工具
+- **Web 管理界面** - 简单的数据浏览和监控工具
 
 ## 📋 目录
 
@@ -92,12 +92,12 @@ func main() {
 
     // 5. 查询并扫描到结构体
     type User struct {
-        ID       uint32            `json:"id"`
-        Name     string            `json:"name"`
-        Email    string            `json:"email"`
-        Age      int32             `json:"age"`
-        Tags     []string          `json:"tags"`
-        Settings map[string]string `json:"settings"`
+        ID       uint32            `srdb:"field:id"`
+        Name     string            `srdb:"field:name"`
+        Email    string            `srdb:"field:email"`
+        Age      int32             `srdb:"field:age"`
+        Tags     []string          `srdb:"field:tags"`
+        Settings map[string]string `srdb:"field:settings"`
     }
 
     var users []User

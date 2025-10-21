@@ -673,11 +673,11 @@ func TestChecksumMultipleFieldOrders(t *testing.T) {
 func TestStructToFields(t *testing.T) {
 	// 定义测试结构体
 	type User struct {
-		Name   string  `srdb:"name;indexed;comment:用户名"`
-		Age    int64   `srdb:"age;comment:年龄"`
-		Email  string  `srdb:"email;indexed;comment:邮箱"`
-		Score  float64 `srdb:"score;comment:分数"`
-		Active bool    `srdb:"active;comment:是否激活"`
+		Name   string  `srdb:"field:name;indexed;comment:用户名"`
+		Age    int64   `srdb:"field:age;comment:年龄"`
+		Email  string  `srdb:"field:email;indexed;comment:邮箱"`
+		Score  float64 `srdb:"field:score;comment:分数"`
+		Active bool    `srdb:"field:active;comment:是否激活"`
 	}
 
 	// 生成 Field 列表
@@ -758,9 +758,9 @@ func TestStructToFieldsDefaultName(t *testing.T) {
 // TestStructToFieldsIgnore 测试忽略字段
 func TestStructToFieldsIgnore(t *testing.T) {
 	type Order struct {
-		OrderID   string `srdb:"order_id;comment:订单ID"`
+		OrderID   string `srdb:"field:order_id;comment:订单ID"`
 		Internal  string `srdb:"-"` // 应该被忽略
-		CreatedAt int64  `srdb:"created_at;comment:创建时间"`
+		CreatedAt int64  `srdb:"field:created_at;comment:创建时间"`
 	}
 
 	fields, err := StructToFields(Order{})
@@ -786,7 +786,7 @@ func TestStructToFieldsIgnore(t *testing.T) {
 // TestStructToFieldsPointer 测试指针类型
 func TestStructToFieldsPointer(t *testing.T) {
 	type Item struct {
-		Name string `srdb:"name;comment:名称"`
+		Name string `srdb:"field:name;comment:名称"`
 	}
 
 	// 使用指针
@@ -809,20 +809,20 @@ func TestStructToFieldsPointer(t *testing.T) {
 // TestStructToFieldsAllTypes 测试所有支持的类型
 func TestStructToFieldsAllTypes(t *testing.T) {
 	type AllTypes struct {
-		Int     int     `srdb:"int"`
-		Int64   int64   `srdb:"int64"`
-		Int32   int32   `srdb:"int32"`
-		Int16   int16   `srdb:"int16"`
-		Int8    int8    `srdb:"int8"`
-		Uint    uint    `srdb:"uint"`
-		Uint64  uint64  `srdb:"uint64"`
-		Uint32  uint32  `srdb:"uint32"`
-		Uint16  uint16  `srdb:"uint16"`
-		Uint8   uint8   `srdb:"uint8"`
-		String  string  `srdb:"string"`
-		Float64 float64 `srdb:"float64"`
-		Float32 float32 `srdb:"float32"`
-		Bool    bool    `srdb:"bool"`
+		Int     int     `srdb:"field:int"`
+		Int64   int64   `srdb:"field:int64"`
+		Int32   int32   `srdb:"field:int32"`
+		Int16   int16   `srdb:"field:int16"`
+		Int8    int8    `srdb:"field:int8"`
+		Uint    uint    `srdb:"field:uint"`
+		Uint64  uint64  `srdb:"field:uint64"`
+		Uint32  uint32  `srdb:"field:uint32"`
+		Uint16  uint16  `srdb:"field:uint16"`
+		Uint8   uint8   `srdb:"field:uint8"`
+		String  string  `srdb:"field:string"`
+		Float64 float64 `srdb:"field:float64"`
+		Float32 float32 `srdb:"field:float32"`
+		Bool    bool    `srdb:"field:bool"`
 	}
 
 	fields, err := StructToFields(AllTypes{})
@@ -870,10 +870,10 @@ func TestStructToFieldsAllTypes(t *testing.T) {
 func TestStructToFieldsWithSchema(t *testing.T) {
 	// 定义结构体
 	type Customer struct {
-		CustomerID string `srdb:"customer_id;indexed;comment:客户ID"`
-		Name       string `srdb:"name;comment:客户名称"`
-		Email      string `srdb:"email;indexed;comment:邮箱"`
-		Balance    int64  `srdb:"balance;comment:余额"`
+		CustomerID string `srdb:"field:customer_id;indexed;comment:客户ID"`
+		Name       string `srdb:"field:name;comment:客户名称"`
+		Email      string `srdb:"field:email;indexed;comment:邮箱"`
+		Balance    int64  `srdb:"field:balance;comment:余额"`
 	}
 
 	// 生成 Field 列表
@@ -936,13 +936,13 @@ func TestStructToFieldsWithSchema(t *testing.T) {
 func TestStructToFieldsTagVariations(t *testing.T) {
 	type TestStruct struct {
 		// 只有字段名
-		Field1 string `srdb:"field1"`
+		Field1 string `srdb:"field:field1"`
 		// 字段名 + indexed
-		Field2 string `srdb:"field2;indexed"`
+		Field2 string `srdb:"field:field2;indexed"`
 		// 字段名 + comment
-		Field3 string `srdb:"field3;comment:字段3"`
+		Field3 string `srdb:"field:field3;comment:字段3"`
 		// 完整格式
-		Field4 string `srdb:"field4;indexed;comment:字段4"`
+		Field4 string `srdb:"field:field4;indexed;comment:字段4"`
 		// 只有 indexed（使用默认字段名）
 		Field5 string `srdb:";indexed"`
 		// 只有 comment（使用默认字段名）
@@ -1104,8 +1104,8 @@ func TestStructToFieldsSnakeCase(t *testing.T) {
 // TestStructToFieldsOverrideSnakeCase 测试可以覆盖默认 snake_case
 func TestStructToFieldsOverrideSnakeCase(t *testing.T) {
 	type User struct {
-		UserName string `srdb:"username"`          // 覆盖默认的 user_name
-		IsActive bool   `srdb:"active;comment:激活"` // 覆盖默认的 is_active
+		UserName string `srdb:"field:username"`          // 覆盖默认的 user_name
+		IsActive bool   `srdb:"field:active;comment:激活"` // 覆盖默认的 is_active
 	}
 
 	fields, err := StructToFields(User{})

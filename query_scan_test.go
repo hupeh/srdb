@@ -9,10 +9,10 @@ import (
 )
 
 type DeviceScanTest struct {
-	DeviceID    uint32  `srdb:"device_id"`
-	Temperature float32 `srdb:"temperature"`
-	Humidity    uint8   `srdb:"humidity"`
-	Status      bool    `srdb:"status"`
+	DeviceID    uint32  `srdb:"field:device_id"`
+	Temperature float32 `srdb:"field:temperature"`
+	Humidity    uint8   `srdb:"field:humidity"`
+	Status      bool    `srdb:"field:status"`
 }
 
 func TestRowScan(t *testing.T) {
@@ -316,9 +316,9 @@ func TestReservedFieldNames(t *testing.T) {
 func TestScanTimeField(t *testing.T) {
 	// 测试扫描 _time 字段为 time.Time 类型
 	type DeviceWithTime struct {
-		DeviceID uint32    `srdb:"device_id"`
-		Seq      int64     `srdb:"_seq"`
-		Time     time.Time `srdb:"_time"`
+		DeviceID uint32    `srdb:"field:device_id"`
+		Seq      int64     `srdb:"field:_seq"`
+		Time     time.Time `srdb:"field:_time"`
 	}
 
 	// 创建临时数据库
@@ -412,39 +412,39 @@ func TestScanAllBasicTypes(t *testing.T) {
 	// 定义包含所有基础类型的结构体
 	type AllTypes struct {
 		// 系统字段
-		Seq  int64     `srdb:"_seq"`
-		Time time.Time `srdb:"_time"`
+		Seq  int64     `srdb:"field:_seq"`
+		Time time.Time `srdb:"field:_time"`
 
 		// 有符号整数 (5种)
-		IntField   int   `srdb:"int_field"`
-		Int8Field  int8  `srdb:"int8_field"`
-		Int16Field int16 `srdb:"int16_field"`
-		Int32Field int32 `srdb:"int32_field"`
-		Int64Field int64 `srdb:"int64_field"`
+		IntField   int   `srdb:"field:int_field"`
+		Int8Field  int8  `srdb:"field:int8_field"`
+		Int16Field int16 `srdb:"field:int16_field"`
+		Int32Field int32 `srdb:"field:int32_field"`
+		Int64Field int64 `srdb:"field:int64_field"`
 
 		// 无符号整数 (5种)
-		UintField   uint   `srdb:"uint_field"`
-		Uint8Field  uint8  `srdb:"uint8_field"`
-		Uint16Field uint16 `srdb:"uint16_field"`
-		Uint32Field uint32 `srdb:"uint32_field"`
-		Uint64Field uint64 `srdb:"uint64_field"`
+		UintField   uint   `srdb:"field:uint_field"`
+		Uint8Field  uint8  `srdb:"field:uint8_field"`
+		Uint16Field uint16 `srdb:"field:uint16_field"`
+		Uint32Field uint32 `srdb:"field:uint32_field"`
+		Uint64Field uint64 `srdb:"field:uint64_field"`
 
 		// 浮点数 (2种)
-		Float32Field float32 `srdb:"float32_field"`
-		Float64Field float64 `srdb:"float64_field"`
+		Float32Field float32 `srdb:"field:float32_field"`
+		Float64Field float64 `srdb:"field:float64_field"`
 
 		// 字符串
-		StringField string `srdb:"string_field"`
+		StringField string `srdb:"field:string_field"`
 
 		// 布尔
-		BoolField bool `srdb:"bool_field"`
+		BoolField bool `srdb:"field:bool_field"`
 
 		// 特殊类型 (5种)
-		ByteField     byte            `srdb:"byte_field"`
-		RuneField     rune            `srdb:"rune_field"`
-		DecimalField  decimal.Decimal `srdb:"decimal_field"`
-		TimeField     time.Time       `srdb:"time_field"`
-		DurationField time.Duration   `srdb:"duration_field"`
+		ByteField     byte            `srdb:"field:byte_field"`
+		RuneField     rune            `srdb:"field:rune_field"`
+		DecimalField  decimal.Decimal `srdb:"field:decimal_field"`
+		TimeField     time.Time       `srdb:"field:time_field"`
+		DurationField time.Duration   `srdb:"field:duration_field"`
 	}
 
 	// 创建临时数据库
@@ -640,16 +640,16 @@ func TestScanNullableTypes(t *testing.T) {
 	t.Skip("当前数据库实现将 NULL 值存储为零值，需要修复底层存储逻辑")
 	type NullableTypes struct {
 		// 必填字段
-		ID uint32 `srdb:"id"`
+		ID uint32 `srdb:"field:id"`
 
 		// 可空的各种类型
-		IntPtr     *int64           `srdb:"int_ptr"`
-		UintPtr    *uint32          `srdb:"uint_ptr"`
-		FloatPtr   *float64         `srdb:"float_ptr"`
-		StringPtr  *string          `srdb:"string_ptr"`
-		BoolPtr    *bool            `srdb:"bool_ptr"`
-		DecimalPtr *decimal.Decimal `srdb:"decimal_ptr"`
-		TimePtr    *time.Time       `srdb:"time_ptr"`
+		IntPtr     *int64           `srdb:"field:int_ptr"`
+		UintPtr    *uint32          `srdb:"field:uint_ptr"`
+		FloatPtr   *float64         `srdb:"field:float_ptr"`
+		StringPtr  *string          `srdb:"field:string_ptr"`
+		BoolPtr    *bool            `srdb:"field:bool_ptr"`
+		DecimalPtr *decimal.Decimal `srdb:"field:decimal_ptr"`
+		TimePtr    *time.Time       `srdb:"field:time_ptr"`
 	}
 
 	// 创建临时数据库
@@ -855,11 +855,11 @@ func TestScanComplexTypes(t *testing.T) {
 	}
 
 	type ComplexData struct {
-		ID      uint32            `srdb:"id"`
-		Tags    []string          `srdb:"tags"`
-		Scores  []int             `srdb:"scores"`
-		Address Address           `srdb:"address"`
-		Meta    map[string]string `srdb:"meta"`
+		ID      uint32            `srdb:"field:id"`
+		Tags    []string          `srdb:"field:tags"`
+		Scores  []int             `srdb:"field:scores"`
+		Address Address           `srdb:"field:address"`
+		Meta    map[string]string `srdb:"field:meta"`
 	}
 
 	// 创建临时数据库
@@ -958,10 +958,10 @@ func TestScanStructSlice(t *testing.T) {
 	}
 
 	type User struct {
-		ID        uint32    `srdb:"id"`
-		Name      string    `srdb:"name"`
-		Addresses []Address `srdb:"addresses"` // 结构体切片
-		Contacts  []Contact `srdb:"contacts"`  // 结构体切片
+		ID        uint32    `srdb:"field:id"`
+		Name      string    `srdb:"field:name"`
+		Addresses []Address `srdb:"field:addresses"` // 结构体切片
+		Contacts  []Contact `srdb:"field:contacts"`  // 结构体切片
 	}
 
 	dbPath := t.TempDir()
@@ -1064,9 +1064,9 @@ func TestScanNestedStructs(t *testing.T) {
 	}
 
 	type Employee struct {
-		ID      uint32  `srdb:"id"`
-		Name    string  `srdb:"name"`
-		Company Company `srdb:"company"` // 多层嵌套
+		ID      uint32  `srdb:"field:id"`
+		Name    string  `srdb:"field:name"`
+		Company Company `srdb:"field:company"` // 多层嵌套
 	}
 
 	dbPath := t.TempDir()
@@ -1160,13 +1160,13 @@ func TestScanMixedComplexTypes(t *testing.T) {
 	}
 
 	type Article struct {
-		ID          uint32       `srdb:"id"`
-		Title       string       `srdb:"title"`
-		Author      Author       `srdb:"author"`      // 结构体
-		Tags        []Tag        `srdb:"tags"`        // 结构体切片
-		Attachments []Attachment `srdb:"attachments"` // 结构体切片
-		Metadata    map[string]any `srdb:"metadata"`  // map
-		Views       []int        `srdb:"views"`       // 基础类型切片
+		ID          uint32       `srdb:"field:id"`
+		Title       string       `srdb:"field:title"`
+		Author      Author       `srdb:"field:author"`      // 结构体
+		Tags        []Tag        `srdb:"field:tags"`        // 结构体切片
+		Attachments []Attachment `srdb:"field:attachments"` // 结构体切片
+		Metadata    map[string]any `srdb:"field:metadata"`  // map
+		Views       []int        `srdb:"field:views"`       // 基础类型切片
 	}
 
 	dbPath := t.TempDir()
@@ -1274,9 +1274,9 @@ func TestScanPointerFields(t *testing.T) {
 	}
 
 	type User struct {
-		ID      uint32   `srdb:"id"`
-		Name    string   `srdb:"name"`
-		Profile *Profile `srdb:"profile"` // 指针结构体
+		ID      uint32   `srdb:"field:id"`
+		Name    string   `srdb:"field:name"`
+		Profile *Profile `srdb:"field:profile"` // 指针结构体
 	}
 
 	dbPath := t.TempDir()
@@ -1387,23 +1387,23 @@ func TestScanPointerFields(t *testing.T) {
 func TestScanBoundaryValues(t *testing.T) {
 	type BoundaryValues struct {
 		// 整数边界
-		Int8Min  int8  `srdb:"int8_min"`
-		Int8Max  int8  `srdb:"int8_max"`
-		Int16Min int16 `srdb:"int16_min"`
-		Int16Max int16 `srdb:"int16_max"`
-		Int32Min int32 `srdb:"int32_min"`
-		Int32Max int32 `srdb:"int32_max"`
+		Int8Min  int8  `srdb:"field:int8_min"`
+		Int8Max  int8  `srdb:"field:int8_max"`
+		Int16Min int16 `srdb:"field:int16_min"`
+		Int16Max int16 `srdb:"field:int16_max"`
+		Int32Min int32 `srdb:"field:int32_min"`
+		Int32Max int32 `srdb:"field:int32_max"`
 
-		Uint8Max  uint8  `srdb:"uint8_max"`
-		Uint16Max uint16 `srdb:"uint16_max"`
-		Uint32Max uint32 `srdb:"uint32_max"`
+		Uint8Max  uint8  `srdb:"field:uint8_max"`
+		Uint16Max uint16 `srdb:"field:uint16_max"`
+		Uint32Max uint32 `srdb:"field:uint32_max"`
 
 		// 浮点数特殊值
-		Float32Zero float32 `srdb:"float32_zero"`
-		Float64Zero float64 `srdb:"float64_zero"`
+		Float32Zero float32 `srdb:"field:float32_zero"`
+		Float64Zero float64 `srdb:"field:float64_zero"`
 
 		// 空字符串
-		EmptyString string `srdb:"empty_string"`
+		EmptyString string `srdb:"field:empty_string"`
 	}
 
 	dbPath := t.TempDir()
@@ -1510,14 +1510,14 @@ func TestScanBoundaryValues(t *testing.T) {
 // TestScanWithSelect 测试字段过滤功能
 func TestScanWithSelect(t *testing.T) {
 	type FullData struct {
-		ID   uint32 `srdb:"id"`
-		Name string `srdb:"name"`
-		Age  int    `srdb:"age"`
+		ID   uint32 `srdb:"field:id"`
+		Name string `srdb:"field:name"`
+		Age  int    `srdb:"field:age"`
 	}
 
 	type PartialData struct {
-		ID   uint32 `srdb:"id"`
-		Name string `srdb:"name"`
+		ID   uint32 `srdb:"field:id"`
+		Name string `srdb:"field:name"`
 	}
 
 	dbPath := t.TempDir()
@@ -1571,11 +1571,11 @@ func TestScanWithSelect(t *testing.T) {
 // TestScanMultipleRows 测试批量扫描性能
 func TestScanMultipleRows(t *testing.T) {
 	type LogEntry struct {
-		Seq       int64     `srdb:"_seq"`
-		Timestamp time.Time `srdb:"_time"`
-		Level     string    `srdb:"level"`
-		Message   string    `srdb:"message"`
-		Code      int32     `srdb:"code"`
+		Seq       int64     `srdb:"field:_seq"`
+		Timestamp time.Time `srdb:"field:_time"`
+		Level     string    `srdb:"field:level"`
+		Message   string    `srdb:"field:message"`
+		Code      int32     `srdb:"field:code"`
 	}
 
 	dbPath := t.TempDir()
