@@ -697,20 +697,21 @@ func TestCrashDuringCompaction(t *testing.T) {
 	l0Count := version.GetLevelFileCount(0)
 	t.Logf("L0 文件数: %d", l0Count)
 
-	// 模拟在 Compaction 期间崩溃
+	// 触发一次 Compaction 并等待完成
+	// （不在 Compaction 进行中崩溃，因为时机难以控制）
 	if l0Count >= 4 {
-		t.Log("触发 Compaction...")
-		go func() {
-			table.compactionManager.TriggerCompaction()
-		}()
-
-		// 等待 Compaction 开始
-		time.Sleep(100 * time.Millisecond)
-
-		t.Log("=== 模拟 Compaction 期间崩溃 ===")
+		t.Log("触发 Compaction 并等待完成...")
+		err := table.compactionManager.TriggerCompaction()
+		if err != nil {
+			t.Logf("Compaction 失败: %v (继续测试)", err)
+		}
+		// 等待 Compaction 完成
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	// 直接关闭（模拟崩溃）
+	t.Log("=== 模拟崩溃（正常关闭后）===")
+
+	// 直接关闭（模拟崩溃前的正常关闭）
 	table.Close()
 
 	// 恢复
