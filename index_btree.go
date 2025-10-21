@@ -580,9 +580,11 @@ func (r *IndexBTreeReader) ForEachDesc(callback IndexEntryCallback) {
 }
 
 // Close 关闭读取器
+// 注意：不关闭 file，因为它是从外部传入的，应该由调用者关闭
 func (r *IndexBTreeReader) Close() error {
 	if r.mmap != nil {
 		r.mmap.Unmap()
+		r.mmap = nil
 	}
 	return nil
 }

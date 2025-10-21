@@ -434,6 +434,7 @@ func TestIndexBTreeWriter(t *testing.T) {
 		t.Fatalf("Failed to create reader: %v", err)
 	}
 	defer reader.Close()
+	defer file.Close() // 确保文件被关闭（Windows 需要）
 
 	// 验证读取
 	for value, expectedSeqs := range testData {
@@ -555,6 +556,7 @@ func TestIndexBTreeDataTypes(t *testing.T) {
 		t.Fatalf("Failed to create reader: %v", err)
 	}
 	defer reader.Close()
+	defer file.Close() // 确保文件被关闭（Windows 需要）
 
 	// 验证
 	for value, expectedSeqs := range testData {
@@ -621,6 +623,7 @@ func TestIndexBTreeLargeData(t *testing.T) {
 		t.Fatalf("Failed to create reader: %v", err)
 	}
 	defer reader.Close()
+	defer file.Close() // 确保文件被关闭（Windows 需要）
 
 	// 随机验证 100 个值
 	for i := range 100 {
