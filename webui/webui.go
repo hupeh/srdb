@@ -112,14 +112,9 @@ func (ui *WebUI) handleListTables(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 
-		// 尝试获取行数（通过快速查询）
-		rowCount := int64(0)
-		if rows, err := table.Query().Rows(); err == nil {
-			for rows.Next() {
-				rowCount++
-			}
-			rows.Close()
-		}
+		// 使用 Stats() 获取行数（高效，只读取元数据）
+		stats := table.Stats()
+		rowCount := stats.TotalRows
 
 		tables = append(tables, TableListItem{
 			Name:      name,
