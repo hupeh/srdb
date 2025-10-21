@@ -608,11 +608,10 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 	}
 
 	// 尝试使用索引优化查询
-	// 检查是否有可以使用索引的 Eq 条件
-	indexField, indexValue := qb.findIndexableCondition()
-	if indexField != "" {
+	indexField, indexExpr := qb.findIndexableCondition()
+	if indexField != "" && indexExpr != nil {
 		// 使用索引查询（索引查询需要立即加载，因为需要从索引获取 seq 列表）
-		return qb.rowsWithIndex(rows, indexField, indexValue)
+		return qb.rowsWithIndexExpr(rows, indexField, indexExpr)
 	}
 
 	// 惰性加载：只初始化迭代器，不读取数据
@@ -643,22 +642,70 @@ func (qb *QueryBuilder) Rows() (*Rows, error) {
 	return rows, nil
 }
 
-// findIndexableCondition 查找可以使用索引的条件（Eq 操作）
-func (qb *QueryBuilder) findIndexableCondition() (string, any) {
+// findIndexableCondition 查找可以使用索引的条件
+// 返回：字段名、条件表达式（如果没有找到则返回 "", nil）
+//
+// 支持的索引查询类型：
+//   - 等值查询 (Eq): O(1) 哈希查找
+//   - 范围查询 (Gt/Lt/Gte/Lte/Between): O(M) 遍历索引值并过滤，M = 唯一值数量
+//   - 模糊查询 (Contains/StartsWith/EndsWith): O(M) 遍历索引值并匹配
+//   - 集合查询 (In/NotIn): O(K) 多次哈希查找，K = 集合大小
+//
+// 性能注意事项：
+//   - 索引查询的效果取决于数据的选择性（唯一值数量 vs 总行数）
+//   - 当唯一值数量接近总行数时，索引扫描可能不如全表扫描
+//   - 当前实现优先使用索引，不考虑成本估算（简化实现）
+func (qb *QueryBuilder) findIndexableCondition() (string, Expr) {
 	for _, cond := range qb.conds {
-		// 检查是否是 compare 类型且操作符是 "="
-		if cmp, ok := cond.(compare); ok && cmp.op == "=" {
+		if cmp, ok := cond.(compare); ok {
 			// 检查该字段是否有索引
 			if idx, exists := qb.table.indexManager.GetIndex(cmp.field); exists && idx.IsReady() {
-				return cmp.field, cmp.right
+				// 支持的操作符
+				switch cmp.op {
+				case "=", ">", "<", ">=", "<=", "BETWEEN",
+					"CONTAINS", "NOT CONTAINS",
+					"STARTS WITH", "NOT STARTS WITH",
+					"ENDS WITH", "NOT ENDS WITH",
+					"IN", "NOT IN":
+					return cmp.field, cond
+				}
 			}
 		}
 	}
 	return "", nil
 }
 
-// rowsWithIndex 使用索引查询数据
-func (qb *QueryBuilder) rowsWithIndex(rows *Rows, indexField string, indexValue any) (*Rows, error) {
+// rowsWithIndexExpr 使用索引查询数据（支持多种查询类型）
+func (qb *QueryBuilder) rowsWithIndexExpr(rows *Rows, indexField string, expr Expr) (*Rows, error) {
+	cmp, ok := expr.(compare)
+	if !ok {
+		return nil, fmt.Errorf("unsupported expression type for index query")
+	}
+
+	// 根据操作符类型选择不同的索引查询策略
+	switch cmp.op {
+	case "=":
+		// 等值查询：O(1) 哈希查找
+		return qb.rowsWithIndexEq(rows, indexField, cmp.right)
+	case "IN":
+		// IN 查询：多次哈希查找
+		return qb.rowsWithIndexIn(rows, indexField, cmp.right, false)
+	case "NOT IN":
+		// NOT IN 查询：多次哈希查找 + 全表扫描
+		return qb.rowsWithIndexIn(rows, indexField, cmp.right, true)
+	case ">", "<", ">=", "<=", "BETWEEN":
+		// 范围查询：遍历索引并过滤
+		return qb.rowsWithIndexRange(rows, indexField, cmp)
+	case "CONTAINS", "NOT CONTAINS", "STARTS WITH", "NOT STARTS WITH", "ENDS WITH", "NOT ENDS WITH":
+		// 模糊查询：遍历索引并匹配
+		return qb.rowsWithIndexPattern(rows, indexField, cmp)
+	default:
+		return nil, fmt.Errorf("unsupported index operation: %s", cmp.op)
+	}
+}
+
+// rowsWithIndexEq 使用索引进行等值查询（O(1) 哈希查找）
+func (qb *QueryBuilder) rowsWithIndexEq(rows *Rows, indexField string, indexValue any) (*Rows, error) {
 	// 获取索引
 	idx, exists := qb.table.indexManager.GetIndex(indexField)
 	if !exists {
@@ -701,6 +748,341 @@ func (qb *QueryBuilder) rowsWithIndex(rows *Rows, indexField string, indexValue 
 	rows.cachedIndex = -1
 
 	return rows, nil
+}
+
+// rowsWithIndexIn 使用索引进行 IN/NOT IN 查询（O(K) 多次哈希查找，K = 集合大小）
+func (qb *QueryBuilder) rowsWithIndexIn(rows *Rows, indexField string, values any, negate bool) (*Rows, error) {
+	// 获取索引
+	idx, exists := qb.table.indexManager.GetIndex(indexField)
+	if !exists {
+		return nil, fmt.Errorf("index on field %s not found", indexField)
+	}
+
+	// 将 values 转换为 []any
+	valueList, ok := values.([]any)
+	if !ok {
+		return nil, fmt.Errorf("IN/NOT IN values must be []any, got %T", values)
+	}
+
+	if negate {
+		// NOT IN 查询：需要全表扫描然后排除索引匹配的记录
+		// 先收集所有要排除的 seq
+		excludeSeqs := make(map[int64]bool)
+		for _, value := range valueList {
+			seqs, err := idx.Get(value)
+			if err != nil {
+				continue // 跳过获取失败的值
+			}
+			for _, seq := range seqs {
+				excludeSeqs[seq] = true
+			}
+		}
+
+		// 从所有数据源收集 seq，排除匹配的记录
+		allSeqs := []int64{}
+
+		// 从 Active MemTable 收集
+		activeMemTable := qb.table.memtableManager.GetActive()
+		if activeMemTable != nil {
+			allSeqs = append(allSeqs, activeMemTable.Keys()...)
+		}
+
+		// 从 Immutable MemTables 收集
+		immutables := qb.table.memtableManager.GetImmutables()
+		for _, immutable := range immutables {
+			allSeqs = append(allSeqs, immutable.MemTable.Keys()...)
+		}
+
+		// 从 SST 文件收集
+		sstReaders := qb.table.sstManager.GetReaders()
+		for _, reader := range sstReaders {
+			allSeqs = append(allSeqs, reader.GetAllKeys()...)
+		}
+
+		// 去重并过滤排除的 seq
+		seqMap := make(map[int64]bool)
+		uniqueSeqs := []int64{}
+		for _, seq := range allSeqs {
+			if !seqMap[seq] && !excludeSeqs[seq] {
+				seqMap[seq] = true
+				uniqueSeqs = append(uniqueSeqs, seq)
+			}
+		}
+
+		// 根据 seq 列表获取数据
+		rows.cachedRows = make([]*SSTableRow, 0, len(uniqueSeqs))
+		for _, seq := range uniqueSeqs {
+			row, err := qb.table.Get(seq)
+			if err != nil {
+				continue
+			}
+
+			// 检查是否匹配所有其他条件
+			if qb.Match(row.Data) {
+				rows.cachedRows = append(rows.cachedRows, row)
+			}
+		}
+	} else {
+		// IN 查询：对每个值执行索引查找并合并结果
+		seqMap := make(map[int64]bool) // 去重
+		allSeqs := []int64{}
+
+		for _, value := range valueList {
+			seqs, err := idx.Get(value)
+			if err != nil {
+				continue // 跳过获取失败的值
+			}
+
+			for _, seq := range seqs {
+				if !seqMap[seq] {
+					seqMap[seq] = true
+					allSeqs = append(allSeqs, seq)
+				}
+			}
+		}
+
+		// 如果没有结果，返回空结果集
+		if len(allSeqs) == 0 {
+			rows.cached = true
+			rows.cachedIndex = -1
+			rows.cachedRows = []*SSTableRow{}
+			return rows, nil
+		}
+
+		// 根据 seq 列表获取数据
+		rows.cachedRows = make([]*SSTableRow, 0, len(allSeqs))
+		for _, seq := range allSeqs {
+			row, err := qb.table.Get(seq)
+			if err != nil {
+				continue
+			}
+
+			// 检查是否匹配所有其他条件
+			if qb.Match(row.Data) {
+				rows.cachedRows = append(rows.cachedRows, row)
+			}
+		}
+	}
+
+	// 应用 offset 和 limit
+	rows.cachedRows = qb.applyOffsetLimit(rows.cachedRows)
+
+	// 使用缓存模式
+	rows.cached = true
+	rows.cachedIndex = -1
+
+	return rows, nil
+}
+
+// rowsWithIndexRange 使用索引进行范围查询（O(M) 遍历索引值并过滤，M = 唯一值数量）
+// 支持操作符：>, <, >=, <=, BETWEEN
+func (qb *QueryBuilder) rowsWithIndexRange(rows *Rows, indexField string, cmp compare) (*Rows, error) {
+	// 获取索引
+	idx, exists := qb.table.indexManager.GetIndex(indexField)
+	if !exists {
+		return nil, fmt.Errorf("index on field %s not found", indexField)
+	}
+
+	// 收集匹配的 seq
+	seqMap := make(map[int64]bool) // 去重
+	allSeqs := []int64{}
+
+	// 遍历索引中的所有值
+	err := idx.ForEach(func(value string, seqs []int64) bool {
+		// 将字符串值转换回原始类型进行比较
+		// 注意：索引中的值以字符串形式存储（通过 fmt.Sprint）
+		// 需要根据 Schema 的字段类型进行反序列化
+		var actualValue any
+		field, err := qb.table.schema.GetField(indexField)
+		if err != nil {
+			// 如果获取 Schema 失败，尝试直接使用字符串比较
+			actualValue = value
+		} else {
+			// 根据字段类型反序列化
+			actualValue, err = deserializeIndexValue(value, field.Type)
+			if err != nil {
+				// 反序列化失败，使用字符串值
+				actualValue = value
+			}
+		}
+
+		// 检查该值是否满足范围条件
+		match := false
+		switch cmp.op {
+		case ">":
+			match = compareGreater(actualValue, cmp.right)
+		case "<":
+			match = compareLess(actualValue, cmp.right)
+		case ">=":
+			match = compareGreater(actualValue, cmp.right) || compareEqual(actualValue, cmp.right)
+		case "<=":
+			match = compareLess(actualValue, cmp.right) || compareEqual(actualValue, cmp.right)
+		case "BETWEEN":
+			if list, ok := cmp.right.([]any); ok && len(list) == 2 {
+				match = (compareGreater(actualValue, list[0]) || compareEqual(actualValue, list[0])) &&
+					(compareLess(actualValue, list[1]) || compareEqual(actualValue, list[1]))
+			}
+		}
+
+		// 如果匹配，收集该值对应的所有 seq
+		if match {
+			for _, seq := range seqs {
+				if !seqMap[seq] {
+					seqMap[seq] = true
+					allSeqs = append(allSeqs, seq)
+				}
+			}
+		}
+
+		return true // 继续遍历
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate index: %w", err)
+	}
+
+	// 如果没有结果，返回空结果集
+	if len(allSeqs) == 0 {
+		rows.cached = true
+		rows.cachedIndex = -1
+		rows.cachedRows = []*SSTableRow{}
+		return rows, nil
+	}
+
+	// 根据 seq 列表获取数据
+	rows.cachedRows = make([]*SSTableRow, 0, len(allSeqs))
+	for _, seq := range allSeqs {
+		row, err := qb.table.Get(seq)
+		if err != nil {
+			continue
+		}
+
+		// 检查是否匹配所有其他条件
+		if qb.Match(row.Data) {
+			rows.cachedRows = append(rows.cachedRows, row)
+		}
+	}
+
+	// 应用 offset 和 limit
+	rows.cachedRows = qb.applyOffsetLimit(rows.cachedRows)
+
+	// 使用缓存模式
+	rows.cached = true
+	rows.cachedIndex = -1
+
+	return rows, nil
+}
+
+// rowsWithIndexPattern 使用索引进行模糊查询（O(M) 遍历索引值并匹配，M = 唯一值数量）
+// 支持操作符：CONTAINS, NOT CONTAINS, STARTS WITH, NOT STARTS WITH, ENDS WITH, NOT ENDS WITH
+func (qb *QueryBuilder) rowsWithIndexPattern(rows *Rows, indexField string, cmp compare) (*Rows, error) {
+	// 获取索引
+	idx, exists := qb.table.indexManager.GetIndex(indexField)
+	if !exists {
+		return nil, fmt.Errorf("index on field %s not found", indexField)
+	}
+
+	// 获取模式字符串
+	pattern, ok := cmp.right.(string)
+	if !ok {
+		return nil, fmt.Errorf("pattern must be string, got %T", cmp.right)
+	}
+
+	// 收集匹配的 seq
+	seqMap := make(map[int64]bool) // 去重
+	allSeqs := []int64{}
+
+	// 遍历索引中的所有值
+	err := idx.ForEach(func(value string, seqs []int64) bool {
+		// 检查该值是否满足模式匹配条件
+		match := false
+		switch cmp.op {
+		case "CONTAINS":
+			match = strings.Contains(value, pattern)
+		case "NOT CONTAINS":
+			match = !strings.Contains(value, pattern)
+		case "STARTS WITH":
+			match = strings.HasPrefix(value, pattern)
+		case "NOT STARTS WITH":
+			match = !strings.HasPrefix(value, pattern)
+		case "ENDS WITH":
+			match = strings.HasSuffix(value, pattern)
+		case "NOT ENDS WITH":
+			match = !strings.HasSuffix(value, pattern)
+		}
+
+		// 如果匹配，收集该值对应的所有 seq
+		if match {
+			for _, seq := range seqs {
+				if !seqMap[seq] {
+					seqMap[seq] = true
+					allSeqs = append(allSeqs, seq)
+				}
+			}
+		}
+
+		return true // 继续遍历
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate index: %w", err)
+	}
+
+	// 如果没有结果，返回空结果集
+	if len(allSeqs) == 0 {
+		rows.cached = true
+		rows.cachedIndex = -1
+		rows.cachedRows = []*SSTableRow{}
+		return rows, nil
+	}
+
+	// 根据 seq 列表获取数据
+	rows.cachedRows = make([]*SSTableRow, 0, len(allSeqs))
+	for _, seq := range allSeqs {
+		row, err := qb.table.Get(seq)
+		if err != nil {
+			continue
+		}
+
+		// 检查是否匹配所有其他条件
+		if qb.Match(row.Data) {
+			rows.cachedRows = append(rows.cachedRows, row)
+		}
+	}
+
+	// 应用 offset 和 limit
+	rows.cachedRows = qb.applyOffsetLimit(rows.cachedRows)
+
+	// 使用缓存模式
+	rows.cached = true
+	rows.cachedIndex = -1
+
+	return rows, nil
+}
+
+// deserializeIndexValue 将索引中的字符串值反序列化为原始类型
+func deserializeIndexValue(value string, fieldType FieldType) (any, error) {
+	switch fieldType {
+	case String:
+		return value, nil
+	case Int, Int8, Int16, Int32, Int64:
+		var num int64
+		_, err := fmt.Sscanf(value, "%d", &num)
+		return num, err
+	case Uint, Uint8, Uint16, Uint32, Uint64, Byte:
+		var num uint64
+		_, err := fmt.Sscanf(value, "%d", &num)
+		return num, err
+	case Float32, Float64:
+		var num float64
+		_, err := fmt.Sscanf(value, "%f", &num)
+		return num, err
+	case Bool:
+		return value == "true", nil
+	default:
+		// 其他类型使用字符串比较
+		return value, nil
+	}
 }
 
 // rowsWithOrder 使用排序返回数据
